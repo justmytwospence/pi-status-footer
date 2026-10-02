@@ -5,12 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { stripVTControlCharacters as plain } from "node:util";
-import { test } from "node:test";
+import { test } from "vitest";
 
-const root = process.env.PI_PACKAGE_DIR;
-assert.ok(root, "Set PI_PACKAGE_DIR to the installed @earendil-works/pi-coding-agent directory");
-const entry = fileURLToPath(new URL("../agent/extensions/agent-status.ts", import.meta.url));
-const tuiPath = path.join(root, "node_modules/@earendil-works/pi-tui/dist/index.js");
+const modules = fileURLToPath(new URL("../node_modules/@earendil-works/", import.meta.url));
+const root = path.join(modules, "pi-coding-agent");
+const entry = fileURLToPath(new URL("../src/index.ts", import.meta.url));
+const tuiPath = path.join(modules, "pi-tui/dist/index.js");
 const { createJiti } = await import(pathToFileURL(path.join(root, "dist/core/extensions/jiti-loader.js")));
 const jiti = createJiti(import.meta.url, { moduleCache: false, alias: { "@earendil-works/pi-tui": tuiPath } });
 const mod = await jiti.import(entry);

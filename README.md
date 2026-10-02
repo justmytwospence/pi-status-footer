@@ -1,20 +1,24 @@
-# Personal Pi footer
+# pi-status-footer
 
-`agent/extensions/agent-status.ts` replaces only Pi's footer using its public API.
+A [pi](https://pi.dev) extension that replaces only pi's footer using its public API.
 It leaves the editor, Vim mode, working indicator, task widgets and tool rendering
-alone. It uses Pi's current theme, without background color blocks or animation.
+alone. It uses pi's current theme, without background color blocks or animation.
 The MCP status uses a flat Nerd Font plug (U+F1E6), inheriting the status text color;
 it needs Nerd Font symbol support in the terminal. Other status text is preserved.
 
-## Activation and controls
+## Install
 
-Restart Pi once after replacing the old `agent-status.ts`: the old version did
-not clean up its refresh timer on reload. Subsequent edits support `/reload`.
-The `~/.pi/agent/extensions/agent-status.ts` symlink points here.
-`agent/pi-cc-extensions.json` disables only the CC-style package's competing footer;
-its tool rendering and other features remain enabled. That config is also linked
-at `~/.pi/agent/pi-cc-extensions.json`. Without it, CC-style can replace this footer
-after startup or reload.
+```sh
+pi install git:github.com/justmytwospence/pi-status-footer
+```
+
+or add a checkout's path to `packages` in `~/.pi/agent/settings.json`.
+
+## Controls
+
+If `pi-cc-extensions` is installed, disable its competing footer in
+`~/.pi/agent/pi-cc-extensions.json`, or it can replace this one after startup or
+reload. Edits take effect with `/reload`.
 
 - `/status on`: custom footer, limits for the active provider only (default).
 - `/status all`: also keep the other subscription account's limits visible
@@ -99,43 +103,22 @@ five-second timeout.
 Timers, Git subscriptions and direct child processes are cleaned up on shutdown,
 reload and session replacement. Generation checks reject late asynchronous work.
 Print, JSON and RPC modes do not start footer work. tmux window-tab state comes
-from the tmux-agents plugin (`plugins/tmux-agents`), and herdr's `$usage` row
-token from the herdr-attention-queue plugin, not from this footer.
+from the [tmux-agents](https://github.com/justmytwospence/tmux-agents) plugin, and herdr's `$usage` row
+token from the [herdr-attention-queue](https://github.com/justmytwospence/herdr-attention-queue) plugin, not from this footer.
 
-## Verification
-
-Requires an installed Pi and `tsc` on PATH, without installing new dependencies:
+## Development
 
 ```sh
-node shell/.pi/tests/check-status-footer.mjs
+npm install
+npm run check   # tsc against pi's real types, then vitest
 ```
 
-The runner locates an npm or Homebrew Pi installation, or accepts `PI_PACKAGE_DIR`.
-It typechecks against that Pi's real types and runs Node tests. Tests cover usage
-accounting, provider switches, unknown/stale data, the Codex usage response and
-header merging (with `fetch` and credentials stubbed), Git porcelain, ANSI/CJK display
-widths 1–240 in both built-in themes, status preservation, native fallback,
-reload/resume, cleanup, and loading with Pi's actual extension loader. They do not
-make model or network requests or access real credentials. The lifecycle fixture uses a temporary
-home and non-Anthropic model to avoid invoking the real account refresher.
+Tests cover usage accounting, provider switches, unknown/stale data, the Codex usage
+response and header merging (with `fetch` and credentials stubbed), Git porcelain,
+ANSI/CJK display widths 1–240 in both built-in themes, status preservation, native
+fallback, reload/resume, cleanup, and loading with pi's actual extension loader. They
+make no model or network requests and touch no real credentials. The lifecycle
+fixture uses a temporary home and a non-Anthropic model to avoid invoking the real
+account refresher.
 
 Set `STATUS_PREVIEW=1` for sample layouts at 40, 60, 80, 120 and 160 columns.
-
-For the real fullscreen TUI smoke test on macOS/Linux:
-
-```sh
-python3 shell/.pi/tests/status-footer-pty.py
-```
-
-This starts Pi inside a disposable home with no credentials or model tools. It
-loads this footer together with the installed `pi-cc-extensions`, using the real
-footer-ownership config, plus a fake MCP status (no server connection). Set
-`PI_CC_PACKAGE_DIR` if CC-style is installed outside Pi's default npm directory.
-The test verifies that CC-style is active while this footer and its monochrome MCP
-plug survive startup and reload. Only slash commands are sent. It checks light/dark startup, native fallback,
-120-to-40-column resizing, reload without duplicate rows, and clean exit, and
-asserts that the agent conversation stays empty. The harness supplies a controlling
-terminal and records lifecycle traces for failures. A deterministic regression
-check covers successful exit between consecutive process polls. Set
-`STATUS_FOOTER_BASELINE=1` to run startup, resize, reload and exit checks with only
-the native footer as a control.

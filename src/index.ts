@@ -3,7 +3,7 @@
 // provider's usage endpoint: Pi's Codex OAuth token (from Pi's model registry,
 // to ChatGPT's usage endpoint, as Codex CLI's /status) and Claude Code's OAuth
 // token (Keychain or ~/.claude/.credentials.json, to Anthropic's OAuth usage
-// endpoint, as Claude Code's /status). The existing symlink activates changes
+// endpoint, as Claude Code's /status). Changes take effect
 // with /reload.
 import { execFile, type ChildProcess } from "node:child_process";
 import { mkdir, readFile, rename, rmdir, stat, writeFile } from "node:fs/promises";
