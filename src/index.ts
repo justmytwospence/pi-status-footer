@@ -3,7 +3,8 @@
 // provider's usage endpoint: Pi's Codex OAuth token (from Pi's model registry,
 // to ChatGPT's usage endpoint, as Codex CLI's /status) and Claude Code's OAuth
 // token (Keychain or ~/.claude/.credentials.json, to Anthropic's OAuth usage
-// endpoint, as Claude Code's /status). Changes take effect
+// endpoint, as Claude Code's /status). Without a Claude Code login, the usage
+// JSON comes from $PI_STATUS_FOOTER_CLAUDE_USAGE_CMD when set. Changes take effect
 // with /reload.
 import { execFile, type ChildProcess } from "node:child_process";
 import { mkdir, readFile, rename, rmdir, stat, writeFile } from "node:fs/promises";
@@ -413,7 +414,20 @@ export default function statusFooter(pi: ExtensionAPI): void {
     } catch { return; } // someone else is fetching
     try {
       const token = await claudeToken();
-      if (!token || !active) return;
+      if (!active) return;
+      if (!token) {
+        // No Claude Code login here (a herdr-machine0 spoke): ask a command that
+        // prints the usage JSON instead, e.g. `spoke usage claude`.
+        const command = process.env.PI_STATUS_FOOTER_CLAUDE_USAGE_CMD?.trim().split(/\s+/).filter(Boolean);
+        if (!command?.length) return;
+        const body = await exec(command[0], command.slice(1));
+        if (!body || !active) return;
+        JSON.parse(body);
+        const temporary = `${cacheFile}.${process.pid}.tmp`;
+        await writeFile(temporary, body);
+        await rename(temporary, cacheFile);
+        return;
+      }
       const response = await fetch(CLAUDE_USAGE_URL, {
         headers: {
           Authorization: `Bearer ${token}`, "anthropic-beta": "oauth-2025-04-20", "Content-Type": "application/json",

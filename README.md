@@ -98,7 +98,11 @@ old the footer refreshes it itself, reading Claude Code's OAuth token from the
 Keychain (or `~/.claude/.credentials.json`) and sending it only to Anthropic's
 OAuth usage endpoint, under the status line's `.fetch.lock` directory so only one
 process fetches. Both usage requests are in-process `fetch` calls with a
-five-second timeout.
+five-second timeout. Where there is no Claude Code login at all (a
+[herdr-machine0](https://github.com/justmytwospence/herdr-machine0) spoke, which
+only holds a long-lived setup-token), set `PI_STATUS_FOOTER_CLAUDE_USAGE_CMD` to a
+command that prints the usage JSON, such as `spoke usage claude`; its output fills
+the same cache.
 
 Timers, Git subscriptions and direct child processes are cleaned up on shutdown,
 reload and session replacement. Generation checks reject late asynchronous work.
