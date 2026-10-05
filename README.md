@@ -34,13 +34,13 @@ readings fresh.
 
 1. Project and branch, with words such as `modified` and `2 ahead`; model and
    labeled reasoning level on the right. Waiting/errors take priority.
-2. `Context 32% used` with a gauge, and `Est. session cost $35.73`.
+2. `Context 32% used` with a gauge.
 3. Provider/account limits explicitly labeled as percent **used**, with reset
    countdowns when supported.
 4. Other extensions' status notices, only when present. Notices wrap rather than
    disappearing at the right edge. Existing task widgets are not duplicated.
 
-Cache reuse, raw token counts, Git line counts, OAuth details, age and compaction
+Estimated session cost, cache reuse, raw token counts, Git line counts, OAuth details, age and compaction
 counts are available through `/status details`, not crowded into the footer.
 
 Rows shorten and drop lower-priority segments to fit actual terminal cell width.
@@ -56,7 +56,7 @@ for stale account data.
 - **Cache reuse (details):** the last measured assistant prompt on the current branch/model:
   `cacheRead / (input + cacheRead + cacheWrite)`. It does not promise that the next
   request will hit a cache. Switching models clears the reading until measured.
-- **Est. session cost:** reported token-price estimate, not a subscription charge or invoice.
+- **Estimated session cost (details):** reported token-price estimate, not a subscription charge or invoice.
   Whole-session totals include assistant, tool, compaction, branch-summary and
   standalone usage records (including warming). Like Pi's native footer, the
   totals include recorded abandoned branches. Unreported external-agent usage

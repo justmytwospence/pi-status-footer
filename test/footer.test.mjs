@@ -174,16 +174,17 @@ test("narrow layout protects model, context and the most-used quota", () => {
 test("wide layout uses explicit labels without reintroducing secondary metrics", () => {
   const rows = mod.renderFooter(fixture(), 160, theme);
   assert.match(rows[0], /dotfiles.*branch main \(modified, 2 ahead\)\s{2,}opus-5\.5 · reasoning xhigh/);
-  assert.match(rows[1], /Context 28% used [━─]{8}\s{2,}Est\. session cost \$1\.24/);
+  assert.match(rows[1], /Context 28% used [━─]{8}/);
+  assert.doesNotMatch(rows[1], /cost/);
   assert.doesNotMatch(rows.slice(0, 2).join("\n"), /cache|OAuth|diff|compact|↑|↓|56k\/200k/);
   assert.match(rows[2], /5h 32% used/);
   assert.doesNotMatch(rows[2], /extra off/);
 });
 
-test("medium layout retains the labeled context gauge and estimated cost", () => {
+test("medium layout retains the labeled context gauge without cost", () => {
   const row = mod.renderFooter(fixture(), 80, theme)[1];
   assert.match(row, /Context 28% used [━─]{8}/);
-  assert.match(row, /Est\. session cost \$1\.24/);
+  assert.doesNotMatch(row, /cost/);
 });
 
 test("unknown context and quota do not become zero; stale/reset-due limits remain labeled", () => {
@@ -336,7 +337,7 @@ test("lifecycle: native fallback, mode persistence, provider isolation, reload a
     await h.commands.get("status").handler("on", h.ctx);
     h.entries.push({ type: "usage", usage: usage(4) });
     for (const timer of timers) timer.callback();
-    assert.match(h.footer.render(120).join("\n"), /Est\. session cost \$4\.00/);
+    assert.doesNotMatch(h.footer.render(120).join("\n"), /cost/);
     await h.commands.get("status").handler("details", h.ctx);
     const details = h.notices.at(-1);
     assert.match(details, /Context: unknown of 200k tokens; usage unknown/);

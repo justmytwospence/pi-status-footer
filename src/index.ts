@@ -325,7 +325,6 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
   const ctxLong = `${ctxShort}${context === null ? "" : ` used ${gauge(theme, context)}`}`;
   rows.push(fitSegments([
     { text: ctxLong, short: ctxShort, priority: 100 },
-    { text: `Est. session cost ${money(s.totals.cost)}`, short: `Est. cost ${money(s.totals.cost)}`, priority: 80, align: true },
   ], width, theme));
 
   for (const quota of s.quotas) {
