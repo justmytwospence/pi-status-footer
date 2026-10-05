@@ -211,6 +211,40 @@ test("extension statuses wrap without losing notices or ANSI, no duplicate task 
   assert.ok(rows.slice(3).join("").includes("\x1b[31m"));
 });
 
+test("companion extension statuses fold into their rows, and degrade when absent or reshaped", () => {
+  const statuses = new Map([
+    ["auto-effort", "effort: medium (auto)"], ["lean-context", "lean: \u221212k tok"],
+    ["anthropic-billing", "extra usage x3"], ["tool-gate", "gate: 2 auto \u00b7 0 pushed back \u00b7 1 asked"], ["plan", "plan: A working (/plan)"],
+  ]);
+  const absorbed = mod.absorbStatuses(statuses, { claudeRow: true });
+  assert.deepEqual(absorbed, { autoEffort: true, lean: "\u221212k tok", extraBilled: 3,
+    rest: ["plan: A working (/plan)", "gate: 2 auto \u00b7 0 pushed back \u00b7 1 asked"] });
+
+  const s = { ...fixture(), thinking: "medium", statuses: absorbed.rest, autoEffort: true, lean: absorbed.lean, extraBilled: 3 };
+  const rows = mod.renderFooter(s, 200, theme).map(plain);
+  assert.match(rows[0], /reasoning medium \(auto\)/);
+  assert.match(rows[1], /lean \u221212k tok/);
+  assert.match(rows[2], /3 requests billed to extra usage/);
+  assert.doesNotMatch(rows.join("\n"), /effort:|lean:|extra usage x3/);
+  assert.match(rows.at(-1), /plan: A working.* gate: /);
+  // The model never drops for a companion's segment, and every row fits.
+  for (let width = 1; width <= 160; width++) assert.ok(mod.renderFooter(s, width, theme).every((row) => visibleWidth(row) <= width));
+  assert.match(plain(mod.renderFooter(s, 50, theme)[2]), /extra x3/);
+
+  // Companions not installed (no statuses): the plain footer.
+  const bare = mod.absorbStatuses(new Map(), { claudeRow: true });
+  assert.deepEqual(bare, { autoEffort: false, rest: [] });
+  const plainRows = mod.renderFooter({ ...fixture(), ...bare, statuses: bare.rest }, 200, theme).map(plain);
+  assert.match(plainRows[0], /reasoning xhigh$/);
+  assert.doesNotMatch(plainRows.join("\n"), /auto|lean|billed/);
+
+  // No Claude limits row to attach to, or an unrecognized shape: keep the notice as-is.
+  const fallback = mod.absorbStatuses(new Map([
+    ["anthropic-billing", "extra usage x3"], ["auto-effort", "\x1b[33meffort: something new\x1b[0m"], ["lean-context", "trimmed"],
+  ]), { claudeRow: false });
+  assert.deepEqual(fallback, { autoEffort: false, rest: ["extra usage x3", "\x1b[33meffort: something new\x1b[0m", "trimmed"] });
+});
+
 test("external text is sanitized and over-100 gauges are bounded", () => {
   const s = fixture();
   s.git.project = "project\x1b[2J\nattack";
@@ -303,6 +337,12 @@ test("lifecycle: native fallback, mode persistence, provider isolation, reload a
       }
     }
     assert.match(h.footer.render(120).join("\n"), /PLAN mode/);
+    assert.doesNotMatch(plain(h.footer.render(120)[0]), /\(auto\)/);
+    h.statuses.set("auto-effort", "effort: xhigh (auto)");
+    assert.match(plain(h.footer.render(120)[0]), /reasoning xhigh \(auto\)/);
+    assert.doesNotMatch(h.footer.render(120).join("\n"), /effort:/);
+    h.statuses.delete("auto-effort");
+    assert.doesNotMatch(plain(h.footer.render(120)[0]), /\(auto\)/);
     await settle();
     assert.equal(fetches.length, 1);
     assert.equal(fetches[0].url, "https://chatgpt.com/backend-api/wham/usage");

@@ -40,6 +40,22 @@ readings fresh.
 4. Other extensions' status notices, only when present. Notices wrap rather than
    disappearing at the right edge. Existing task widgets are not duplicated.
 
+### Companion extensions
+
+None are required. When installed, their statuses move into the row they describe
+instead of the status row:
+
+| Extension | Status | Shown as |
+| --- | --- | --- |
+| pi-auto-effort | `effort: high (auto)` | `reasoning high (auto)` on the model row |
+| pi-lean-context | `lean: −12k tok` | `lean −12k tok` on the context row |
+| anthropic-billing-guard | `extra usage x3` | `3 requests billed to extra usage` on the Claude limits row |
+
+Without them nothing changes. A status whose text no longer has the expected shape,
+or a billing notice with no Claude limits row to attach to, stays in the status row
+unchanged, so a notice is never lost. pi-plan-mode, pi-tool-gate and MCP statuses
+always stay in the status row.
+
 Estimated session cost, cache reuse, raw token counts, Git line counts, OAuth details, age and compaction
 counts are available through `/status details`, not crowded into the footer.
 

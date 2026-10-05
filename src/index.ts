@@ -52,6 +52,32 @@ export interface Snapshot {
   context: { tokens: number | null; contextWindow: number; percent: number | null };
   totals: Totals; cacheHit?: number; git: GitInfo;
   quotas: Quota[]; unavailableQuota?: string; statuses: string[]; now: number;
+  /** Folded in from companion extensions' statuses when they are installed. */
+  autoEffort?: boolean; lean?: string; extraBilled?: number;
+}
+
+export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; extraBilled?: number; rest: string[] }
+// Statuses from our own companion extensions that read better inside the footer
+// rows they describe. Each is optional: absent extensions publish nothing, and a
+// status whose text no longer matches the expected shape falls through to the
+// generic status row unchanged, so a format change never hides a notice.
+//   auto-effort       (pi-auto-effort)          "effort: high (auto)"  -> "reasoning high (auto)"
+//   lean-context      (pi-lean-context)         "lean: −12k tok"       -> context row
+//   anthropic-billing (anthropic-billing-guard) "extra usage x3"       -> Claude limits row
+// Everything else (plan, gate, mcp, ...) stays in the status row.
+export function absorbStatuses(statuses: ReadonlyMap<string, string>, options: { claudeRow: boolean }): AbsorbedStatuses {
+  const result: AbsorbedStatuses = { autoEffort: false, rest: [] };
+  for (const [key, text] of [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const plainText = clean(text);
+    if (key === "auto-effort" && /^effort: \S+ \(auto\)$/.test(plainText)) { result.autoEffort = true; continue; }
+    const lean = key === "lean-context" ? /^lean: (.+)$/.exec(plainText) : null;
+    if (lean) { result.lean = lean[1]; continue; }
+    const billed = key === "anthropic-billing" ? /^extra usage x(\d+)$/.exec(plainText) : null;
+    if (billed && options.claudeRow) { result.extraBilled = +billed[1]; continue; }
+    // Use the flat Nerd Font plug for MCP; preserve its theme color and text.
+    result.rest.push(key === "mcp" ? text.replace(/\u{1f50c}[\ufe0e\ufe0f]?/u, "\uf1e6") : text);
+  }
+  return result;
 }
 
 const record = (value: unknown): RecordValue =>
@@ -310,7 +336,8 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
   const branchShort = branch ? `${truncateToWidth(clean(g.branch ?? "Git unavailable"), 14)}${marks ? ` (${marks})` : ""}` : "";
   const phaseText = s.phase ? theme.fg(s.phase === "error" ? "error" : "warning", s.phase) : "";
   const model = theme.bold(theme.fg("accent", shortModel(s.model)));
-  const identity = `${model}${s.thinking ? ` · ${theme.fg("muted", `reasoning ${s.thinking}`)}` : ""}`;
+  const reasoning = s.thinking ? `reasoning ${s.thinking}${s.autoEffort ? " (auto)" : ""}` : "";
+  const identity = `${model}${reasoning ? ` · ${theme.fg("muted", reasoning)}` : ""}`;
   rows.push(fitSegments([
     { text: project, priority: 60 },
     { text: branch, short: branchShort, priority: g.conflicts ? 110 : 70 },
@@ -325,6 +352,7 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
   const ctxLong = `${ctxShort}${context === null ? "" : ` used ${gauge(theme, context)}`}`;
   rows.push(fitSegments([
     { text: ctxLong, short: ctxShort, priority: 100 },
+    { text: s.lean ? theme.fg("muted", `lean ${clean(s.lean)}`) : "", priority: 20 },
   ], width, theme));
 
   for (const quota of s.quotas) {
@@ -350,11 +378,14 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
     }
     const extraColor = extra?.enabled ? "warning" : "dim";
     const staleText = `stale ${duration(age)}${expired ? " / reset due" : ""}`;
+    const billed = quota.source === "Claude acct" ? s.extraBilled : undefined;
     const segments: Segment[] = [
       { text: theme.fg("muted", quota.source), priority: 200 },
       { text: stale ? theme.fg("warning", staleText) : "", short: stale ? theme.fg("warning", "stale") : "", priority: 210 },
       ...windows,
       { text: extraText ? theme.fg(extraColor, extraText) : "", short: extra?.enabled ? "extra on" : "", priority: extra?.enabled ? 75 : 5 },
+      { text: billed ? theme.fg("error", `${billed} request${billed === 1 ? "" : "s"} billed to extra usage`) : "",
+        short: billed ? theme.fg("error", `extra x${billed}`) : "", priority: 220 },
     ];
     rows.push(fitSegments(segments, width, theme));
   }
@@ -527,6 +558,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
       if (codex) quotas.unshift(codex);
       else unavailableQuota = unavailableQuota ? `${unavailableQuota} / Codex acct` : "Codex acct";
     } else if (showAll && codex) quotas.push(codex);
+    const absorbed = absorbStatuses(statuses, { claudeRow: quotas.some((q) => q.source === "Claude acct") });
     return {
       cwd: current.cwd, provider, model: current.model?.id ?? "no model",
       thinking: current.model?.reasoning ? pi.getThinkingLevel() : undefined,
@@ -535,9 +567,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
       context: current.getContextUsage() ?? { tokens: null, contextWindow: current.model?.contextWindow ?? 0, percent: null },
       totals, cacheHit, git: { ...git, branch: git.branch ?? branch ?? undefined },
       quotas, unavailableQuota,
-      // Use the flat Nerd Font plug for MCP; preserve its theme color and text.
-      statuses: [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, text]) => key === "mcp" ? text.replace(/\u{1f50c}[\ufe0e\ufe0f]?/u, "\uf1e6") : text),
+      statuses: absorbed.rest, autoEffort: absorbed.autoEffort, lean: absorbed.lean, extraBilled: absorbed.extraBilled,
       now: Date.now(),
     };
   };
