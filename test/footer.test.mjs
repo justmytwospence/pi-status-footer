@@ -245,6 +245,24 @@ test("companion extension statuses fold into their rows, and degrade when absent
   assert.deepEqual(fallback, { autoEffort: false, rest: ["extra usage x3", "\x1b[33meffort: something new\x1b[0m", "trimmed"] });
 });
 
+test("a stashed prompt gets its own row under the editor, with a preview when readable", () => {
+  const absorbed = mod.absorbStatuses(new Map([["prompt-stash", "\x1b[36mprompt stashed\x1b[0m"]]), { claudeRow: true });
+  assert.deepEqual(absorbed, { autoEffort: false, stashed: true, rest: [] });
+  const s = { ...fixture(), statuses: absorbed.rest, stash: { text: "refactor the quota poller\n\nso that it backs off\non 429" } };
+  const rows = mod.renderFooter(s, 120, theme).map(plain);
+  assert.equal(rows[0], '\u203a Stashed \u00b7 "refactor the quota poller" +2 lines \u00b7 ctrl+s to restore');
+  assert.match(rows[1], /^dotfiles/);
+  assert.doesNotMatch(rows.join("\n"), /prompt stashed/);
+  // Narrow: the preview shrinks, then goes, then the hint shortens; the label stays.
+  assert.match(plain(mod.renderFooter(s, 60, theme)[0]), /^\u203a Stashed \u00b7 "refactor the q[^"]*\u2026" \+2 lines \u00b7 ctrl\+s to restore$/);
+  assert.equal(plain(mod.renderFooter(s, 20, theme)[0]), "\u203a Stashed \u00b7 ctrl+s");
+  for (let width = 1; width <= 160; width++) assert.ok(mod.renderFooter(s, width, theme).every((row) => visibleWidth(row) <= width));
+  // pi-stash's internals unreadable: still a row, just without the preview.
+  assert.equal(plain(mod.renderFooter({ ...s, stash: {} }, 120, theme)[0]), "\u203a Stashed \u00b7 ctrl+s to restore");
+  // Unrecognized text from the stash extension stays in the status row.
+  assert.deepEqual(mod.absorbStatuses(new Map([["prompt-stash", "2 prompts stashed"]]), { claudeRow: true }).rest, ["2 prompts stashed"]);
+});
+
 test("external text is sanitized and over-100 gauges are bounded", () => {
   const s = fixture();
   s.git.project = "project\x1b[2J\nattack";

@@ -50,6 +50,7 @@ instead of the status row:
 | pi-auto-effort | `effort: high (auto)` | `reasoning high (auto)` on the model row |
 | pi-lean-context | `lean: −12k tok` | `lean −12k tok` on the context row |
 | anthropic-billing-guard | `extra usage x3` | `3 requests billed to extra usage` on the Claude limits row |
+| @saadjs/pi-stash | `prompt stashed` | `› Stashed · "first line…" +2 lines · ctrl+s to restore` as the top row, just under the editor |
 
 Without them nothing changes. A status whose text no longer has the expected shape,
 or a billing notice with no Claude limits row to attach to, stays in the status row

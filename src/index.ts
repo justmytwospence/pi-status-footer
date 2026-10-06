@@ -54,9 +54,11 @@ export interface Snapshot {
   quotas: Quota[]; unavailableQuota?: string; statuses: string[]; now: number;
   /** Folded in from companion extensions' statuses when they are installed. */
   autoEffort?: boolean; lean?: string; extraBilled?: number;
+  /** A prompt stashed by @saadjs/pi-stash; text is its content when readable. */
+  stash?: { text?: string };
 }
 
-export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; extraBilled?: number; rest: string[] }
+export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; extraBilled?: number; stashed?: boolean; rest: string[] }
 // Statuses from our own companion extensions that read better inside the footer
 // rows they describe. Each is optional: absent extensions publish nothing, and a
 // status whose text no longer matches the expected shape falls through to the
@@ -64,6 +66,7 @@ export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; extraBil
 //   auto-effort       (pi-auto-effort)          "effort: high (auto)"  -> "reasoning high (auto)"
 //   lean-context      (pi-lean-context)         "lean: −12k tok"       -> context row
 //   anthropic-billing (anthropic-billing-guard) "extra usage x3"       -> Claude limits row
+//   prompt-stash      (@saadjs/pi-stash)        "prompt stashed"       -> its own row under the editor
 // Everything else (plan, gate, mcp, ...) stays in the status row.
 export function absorbStatuses(statuses: ReadonlyMap<string, string>, options: { claudeRow: boolean }): AbsorbedStatuses {
   const result: AbsorbedStatuses = { autoEffort: false, rest: [] };
@@ -74,6 +77,7 @@ export function absorbStatuses(statuses: ReadonlyMap<string, string>, options: {
     if (lean) { result.lean = lean[1]; continue; }
     const billed = key === "anthropic-billing" ? /^extra usage x(\d+)$/.exec(plainText) : null;
     if (billed && options.claudeRow) { result.extraBilled = +billed[1]; continue; }
+    if (key === "prompt-stash" && plainText === "prompt stashed") { result.stashed = true; continue; }
     // Use the flat Nerd Font plug for MCP; preserve its theme color and text.
     result.rest.push(key === "mcp" ? text.replace(/\u{1f50c}[\ufe0e\ufe0f]?/u, "\uf1e6") : text);
   }
@@ -322,11 +326,35 @@ export function shortModel(value: string): string {
   return clean(value).replace(/^claude-/, "").replace(/-20\d{6}$/, "").replace(/(\d)-(\d)/g, "$1.$2");
 }
 
+// Like Claude Code's "› Stashed (auto-restores after submit)" hint under its
+// prompt, plus a first-line preview as in opencode's stash list. pi-stash
+// restores after a /command, !shell or model/thinking change, not after an
+// ordinary prompt, so the hint names the key rather than promising a restore.
+function stashRow(text: string | undefined, width: number, theme: Paint): string {
+  const lines = text?.split("\n").map(clean).filter(Boolean) ?? [];
+  const more = lines.length > 1 ? ` +${lines.length - 1} line${lines.length === 2 ? "" : "s"}` : "";
+  const label = `${theme.fg("accent", "\u203a")} ${theme.fg("muted", "Stashed")}`;
+  const hint = "ctrl+s to restore";
+  // The preview gets what the label, line count and hint leave, up to 60 cells.
+  const room = Math.min(60, width - visibleWidth(`${label} · ""${more} · ${hint}`));
+  // Truncate the already-plain line ourselves: truncateToWidth's reset before
+  // the ellipsis would end the dim color early.
+  const first = lines[0] ?? "";
+  const shown = visibleWidth(first) > room ? `${stripVTControlCharacters(truncateToWidth(first, room - 1, ""))}\u2026` : first;
+  const preview = first && room >= 8 ? `"${shown}"${more}` : "";
+  return fitSegments([
+    { text: label, priority: 100 },
+    { text: preview ? theme.fg("dim", preview) : "", priority: 30 },
+    { text: theme.fg("dim", hint), short: theme.fg("dim", "ctrl+s"), priority: 60 },
+  ], width, theme);
+}
+
 export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): string[] {
   if (width <= 0) return [];
   const s = snapshot, g = s.git;
   const rows: string[] = [];
   const sep = theme.fg("dim", " · ");
+  if (s.stash) rows.push(stashRow(s.stash.text, width, theme));
   const marks = [g.conflicts ? theme.fg("error", `${g.conflicts} conflicts`) : "",
     g.staged + g.changed + g.untracked ? theme.fg("warning", "modified") : "",
     g.ahead ? `${g.ahead} ahead` : "", g.behind ? `${g.behind} behind` : ""].filter(Boolean).join(", ");
@@ -397,6 +425,15 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
     rows.push(...wrapTextWithAnsi(text, width));
   }
   return rows.map((row) => truncateToWidth(row, width));
+}
+
+// pi-stash keeps its prompt in a process-global PromptStash under this symbol.
+// Reading it is optional: any other shape just drops the preview.
+const STASH_KEY = Symbol.for("@saadjs/pi-stash/prompt");
+function stashedPrompt(): string | undefined {
+  const value = (globalThis as Record<symbol, unknown>)[STASH_KEY];
+  const text = value !== null && typeof value === "object" ? (value as { value?: unknown }).value : undefined;
+  return typeof text === "string" ? text : undefined;
 }
 
 export default function statusFooter(pi: ExtensionAPI): void {
@@ -568,6 +605,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
       totals, cacheHit, git: { ...git, branch: git.branch ?? branch ?? undefined },
       quotas, unavailableQuota,
       statuses: absorbed.rest, autoEffort: absorbed.autoEffort, lean: absorbed.lean, extraBilled: absorbed.extraBilled,
+      stash: absorbed.stashed ? { text: stashedPrompt() } : undefined,
       now: Date.now(),
     };
   };
