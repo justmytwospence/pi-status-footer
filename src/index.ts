@@ -64,6 +64,8 @@ export interface MarimoStatus {
   notebook: string;
   running?: { section: string; elapsed?: string };
   queued?: number; errors?: number;
+  /** Other notebooks pi-marimo follows besides this one. */
+  others?: number;
   /** Anything else ("disconnected", "not open", "/marimo to pick one"). */
   notes: string[];
 }
@@ -77,9 +79,11 @@ export function parseMarimoStatus(text: string): MarimoStatus | undefined {
     const running = /^running (.+?)(?: \((\S+)\))?$/.exec(part);
     const queued = /^(\d+) queued$/.exec(part);
     const errors = /^(\d+) errors?$/.exec(part);
+    const others = /^\+(\d+) open$/.exec(part);
     if (running) status.running = { section: running[1], elapsed: running[2] };
     else if (queued) status.queued = +queued[1];
     else if (errors) status.errors = +errors[1];
+    else if (others) status.others = +others[1];
     else status.notes.push(part);
   }
   return status;
@@ -391,6 +395,7 @@ function marimoRow(m: MarimoStatus, width: number, theme: Paint): string {
       short: run ? `${theme.fg("warning", "running")} ${truncateToWidth(deepest, 30)}${time}` : "", priority: 100 },
     { text: m.queued ? theme.fg("muted", `${m.queued} queued`) : "", priority: 30 },
     { text: m.errors ? theme.fg("error", `${m.errors} error${m.errors === 1 ? "" : "s"}`) : "", priority: 95 },
+    { text: m.others ? theme.fg("dim", `+${m.others} open`) : "", priority: 20 },
     ...m.notes.map((note): Segment => ({ text: theme.fg("warning", note), priority: 80 })),
   ], width, theme);
 }
