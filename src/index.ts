@@ -53,7 +53,7 @@ export interface Snapshot {
   totals: Totals; cacheHit?: number; git: GitInfo;
   quotas: Quota[]; unavailableQuota?: string; statuses: string[]; now: number;
   /** Folded in from companion extensions' statuses when they are installed. */
-  autoEffort?: boolean; lean?: string; extraBilled?: number;
+  autoEffort?: boolean; lean?: string; cache?: string; extraBilled?: number;
   /** A prompt stashed by @saadjs/pi-stash; text is its content when readable. */
   stash?: { text?: string };
   marimo?: MarimoStatus;
@@ -89,13 +89,14 @@ export function parseMarimoStatus(text: string): MarimoStatus | undefined {
   return status;
 }
 
-export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; extraBilled?: number; stashed?: boolean; marimo?: MarimoStatus; rest: string[] }
+export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; cache?: string; extraBilled?: number; stashed?: boolean; marimo?: MarimoStatus; rest: string[] }
 // Statuses from our own companion extensions that read better inside the footer
 // rows they describe. Each is optional: absent extensions publish nothing, and a
 // status whose text no longer matches the expected shape falls through to the
 // generic status row unchanged, so a format change never hides a notice.
 //   auto-effort       (pi-auto-effort)          "effort: high (auto)"  -> "reasoning high (auto)"
 //   lean-context      (pi-lean-context)         "lean: −12k tok"       -> context row
+//   cache-guard       (pi-cache-guard)          "cache 4:12"           -> context row
 //   anthropic-billing (anthropic-billing-guard) "extra usage x3"       -> Claude limits row
 //   prompt-stash      (@saadjs/pi-stash)        "prompt stashed"       -> its own row under the editor
 //   marimo            (pi-marimo)               "marimo: nb.py · ..."  -> its own row under the context row
@@ -107,6 +108,8 @@ export function absorbStatuses(statuses: ReadonlyMap<string, string>, options: {
     if (key === "auto-effort" && /^effort: \S+ \(auto\)$/.test(plainText)) { result.autoEffort = true; continue; }
     const lean = key === "lean-context" ? /^lean: (.+)$/.exec(plainText) : null;
     if (lean) { result.lean = lean[1]; continue; }
+    const cache = key === "cache-guard" ? /^cache (\d+:\d\d|\d+h\d\dm|cold(?: \(model\)|\?)?)$/.exec(plainText) : null;
+    if (cache) { result.cache = cache[1]; continue; }
     const billed = key === "anthropic-billing" ? /^extra usage x(\d+)$/.exec(plainText) : null;
     if (billed && options.claudeRow) { result.extraBilled = +billed[1]; continue; }
     if (key === "prompt-stash" && plainText === "prompt stashed") { result.stashed = true; continue; }
@@ -432,6 +435,8 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
   rows.push(fitSegments([
     { text: ctxLong, short: ctxShort, priority: 100 },
     { text: s.lean ? theme.fg("muted", `lean ${clean(s.lean)}`) : "", priority: 20 },
+    // Warm is the quiet state; cold means the next prompt re-caches the whole history.
+    { text: s.cache ? `cache ${theme.fg(s.cache.startsWith("cold") ? "warning" : "muted", clean(s.cache))}` : "", priority: 30 },
   ], width, theme));
   if (s.marimo) rows.push(marimoRow(s.marimo, width, theme));
 
@@ -656,7 +661,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
       context: current.getContextUsage() ?? { tokens: null, contextWindow: current.model?.contextWindow ?? 0, percent: null },
       totals, cacheHit, git: { ...git, branch: git.branch ?? branch ?? undefined },
       quotas, unavailableQuota,
-      statuses: absorbed.rest, autoEffort: absorbed.autoEffort, lean: absorbed.lean, extraBilled: absorbed.extraBilled,
+      statuses: absorbed.rest, autoEffort: absorbed.autoEffort, lean: absorbed.lean, cache: absorbed.cache, extraBilled: absorbed.extraBilled,
       stash: absorbed.stashed ? { text: stashedPrompt() } : undefined,
       marimo: absorbed.marimo,
       now: Date.now(),

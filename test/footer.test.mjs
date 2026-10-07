@@ -213,19 +213,24 @@ test("extension statuses wrap without losing notices or ANSI, no duplicate task 
 
 test("companion extension statuses fold into their rows, and degrade when absent or reshaped", () => {
   const statuses = new Map([
-    ["auto-effort", "effort: medium (auto)"], ["lean-context", "lean: \u221212k tok"],
+    ["auto-effort", "effort: medium (auto)"], ["lean-context", "lean: \u221212k tok"], ["cache-guard", "cache 4:12"],
     ["anthropic-billing", "extra usage x3"], ["tool-gate", "gate: 2 auto \u00b7 0 pushed back \u00b7 1 asked"], ["plan", "plan: A working (/plan)"],
   ]);
   const absorbed = mod.absorbStatuses(statuses, { claudeRow: true });
-  assert.deepEqual(absorbed, { autoEffort: true, lean: "\u221212k tok", extraBilled: 3,
+  assert.deepEqual(absorbed, { autoEffort: true, lean: "\u221212k tok", cache: "4:12", extraBilled: 3,
     rest: ["plan: A working (/plan)", "gate: 2 auto \u00b7 0 pushed back \u00b7 1 asked"] });
 
-  const s = { ...fixture(), thinking: "medium", statuses: absorbed.rest, autoEffort: true, lean: absorbed.lean, extraBilled: 3 };
+  const s = { ...fixture(), thinking: "medium", statuses: absorbed.rest, autoEffort: true, lean: absorbed.lean, cache: absorbed.cache, extraBilled: 3 };
   const rows = mod.renderFooter(s, 200, theme).map(plain);
   assert.match(rows[0], /reasoning medium \(auto\)/);
   assert.match(rows[1], /lean \u221212k tok/);
+  assert.match(rows[1], /cache 4:12/);
+  for (const text of ["cache cold", "cache cold (model)", "cache cold?", "cache 1h05m"]) {
+    assert.equal(mod.absorbStatuses(new Map([["cache-guard", text]]), { claudeRow: false }).cache, text.slice(6));
+  }
+  assert.deepEqual(mod.absorbStatuses(new Map([["cache-guard", "cache is weird"]]), { claudeRow: false }).rest, ["cache is weird"]);
   assert.match(rows[2], /3 requests billed to extra usage/);
-  assert.doesNotMatch(rows.join("\n"), /effort:|lean:|extra usage x3/);
+  assert.doesNotMatch(rows.join("\n"), /effort:|lean:|extra usage x3|cache-guard/);
   assert.match(rows.at(-1), /plan: A working.* gate: /);
   // The model never drops for a companion's segment, and every row fits.
   for (let width = 1; width <= 160; width++) assert.ok(mod.renderFooter(s, width, theme).every((row) => visibleWidth(row) <= width));
