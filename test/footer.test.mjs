@@ -263,6 +263,25 @@ test("a stashed prompt gets its own row under the editor, with a preview when re
   assert.deepEqual(mod.absorbStatuses(new Map([["prompt-stash", "2 prompts stashed"]]), { claudeRow: true }).rest, ["2 prompts stashed"]);
 });
 
+test("pi-marimo's notebook gets its own row under the context row", () => {
+  const absorbed = mod.absorbStatuses(new Map([
+    ["marimo", "marimo: fit.py \u00b7 running Data loading \u203a Model fit (12s) \u00b7 2 queued \u00b7 1 error"],
+  ]), { claudeRow: true });
+  assert.deepEqual(absorbed.marimo, { notebook: "fit.py", running: { section: "Data loading \u203a Model fit", elapsed: "12s" }, queued: 2, errors: 1, notes: [] });
+  assert.deepEqual(absorbed.rest, []);
+  const s = { ...fixture(), statuses: absorbed.rest, marimo: absorbed.marimo };
+  const rows = mod.renderFooter(s, 160, theme).map(plain);
+  assert.match(rows[1], /^Context/);
+  assert.equal(rows[2], "marimo fit.py \u00b7 running Data loading \u203a Model fit 12s \u00b7 2 queued \u00b7 1 error");
+  // Narrow: queued goes first, then the label, then the section shortens to its deepest heading.
+  assert.equal(plain(mod.renderFooter(s, 50, theme)[2]), "fit.py \u00b7 running Model fit 12s \u00b7 1 error");
+
+  const idle = mod.absorbStatuses(new Map([["marimo", "marimo: fit.py \u00b7 disconnected"]]), { claudeRow: true }).marimo;
+  assert.deepEqual(idle, { notebook: "fit.py", notes: ["disconnected"] });
+  // Another shape stays in the status row.
+  assert.deepEqual(mod.absorbStatuses(new Map([["marimo", "notebook ready"]]), { claudeRow: true }).rest, ["notebook ready"]);
+});
+
 test("external text is sanitized and over-100 gauges are bounded", () => {
   const s = fixture();
   s.git.project = "project\x1b[2J\nattack";

@@ -56,9 +56,36 @@ export interface Snapshot {
   autoEffort?: boolean; lean?: string; extraBilled?: number;
   /** A prompt stashed by @saadjs/pi-stash; text is its content when readable. */
   stash?: { text?: string };
+  marimo?: MarimoStatus;
 }
 
-export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; extraBilled?: number; stashed?: boolean; rest: string[] }
+/** pi-marimo's status, parsed: the notebook and the ` · ` separated parts after it. */
+export interface MarimoStatus {
+  notebook: string;
+  running?: { section: string; elapsed?: string };
+  queued?: number; errors?: number;
+  /** Anything else ("disconnected", "not open", "/marimo to pick one"). */
+  notes: string[];
+}
+
+export function parseMarimoStatus(text: string): MarimoStatus | undefined {
+  const match = /^marimo: (.+)$/.exec(text);
+  if (!match) return undefined;
+  const [notebook, ...parts] = match[1].split(" · ");
+  const status: MarimoStatus = { notebook, notes: [] };
+  for (const part of parts) {
+    const running = /^running (.+?)(?: \((\S+)\))?$/.exec(part);
+    const queued = /^(\d+) queued$/.exec(part);
+    const errors = /^(\d+) errors?$/.exec(part);
+    if (running) status.running = { section: running[1], elapsed: running[2] };
+    else if (queued) status.queued = +queued[1];
+    else if (errors) status.errors = +errors[1];
+    else status.notes.push(part);
+  }
+  return status;
+}
+
+export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; extraBilled?: number; stashed?: boolean; marimo?: MarimoStatus; rest: string[] }
 // Statuses from our own companion extensions that read better inside the footer
 // rows they describe. Each is optional: absent extensions publish nothing, and a
 // status whose text no longer matches the expected shape falls through to the
@@ -67,6 +94,7 @@ export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; extraBil
 //   lean-context      (pi-lean-context)         "lean: −12k tok"       -> context row
 //   anthropic-billing (anthropic-billing-guard) "extra usage x3"       -> Claude limits row
 //   prompt-stash      (@saadjs/pi-stash)        "prompt stashed"       -> its own row under the editor
+//   marimo            (pi-marimo)               "marimo: nb.py · ..."  -> its own row under the context row
 // Everything else (plan, gate, mcp, ...) stays in the status row.
 export function absorbStatuses(statuses: ReadonlyMap<string, string>, options: { claudeRow: boolean }): AbsorbedStatuses {
   const result: AbsorbedStatuses = { autoEffort: false, rest: [] };
@@ -78,6 +106,8 @@ export function absorbStatuses(statuses: ReadonlyMap<string, string>, options: {
     const billed = key === "anthropic-billing" ? /^extra usage x(\d+)$/.exec(plainText) : null;
     if (billed && options.claudeRow) { result.extraBilled = +billed[1]; continue; }
     if (key === "prompt-stash" && plainText === "prompt stashed") { result.stashed = true; continue; }
+    const marimo = key === "marimo" ? parseMarimoStatus(plainText) : undefined;
+    if (marimo) { result.marimo = marimo; continue; }
     // Use the flat Nerd Font plug for MCP; preserve its theme color and text.
     result.rest.push(key === "mcp" ? text.replace(/\u{1f50c}[\ufe0e\ufe0f]?/u, "\uf1e6") : text);
   }
@@ -349,6 +379,22 @@ function stashRow(text: string | undefined, width: number, theme: Paint): string
   ], width, theme);
 }
 
+// The notebook pi-marimo follows, and what its kernel is running: the markdown
+// section the running cell sits under (deepest heading kept when narrow).
+function marimoRow(m: MarimoStatus, width: number, theme: Paint): string {
+  const run = m.running;
+  const time = run?.elapsed ? theme.fg("dim", ` ${run.elapsed}`) : "";
+  const deepest = run?.section.split(" › ").pop() ?? "";
+  return fitSegments([
+    { text: `${theme.fg("muted", "marimo")} ${theme.fg("accent", m.notebook)}`, short: theme.fg("accent", m.notebook), priority: 90 },
+    { text: run ? `${theme.fg("warning", "running")} ${run.section}${time}` : "",
+      short: run ? `${theme.fg("warning", "running")} ${truncateToWidth(deepest, 30)}${time}` : "", priority: 100 },
+    { text: m.queued ? theme.fg("muted", `${m.queued} queued`) : "", priority: 30 },
+    { text: m.errors ? theme.fg("error", `${m.errors} error${m.errors === 1 ? "" : "s"}`) : "", priority: 95 },
+    ...m.notes.map((note): Segment => ({ text: theme.fg("warning", note), priority: 80 })),
+  ], width, theme);
+}
+
 export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): string[] {
   if (width <= 0) return [];
   const s = snapshot, g = s.git;
@@ -382,6 +428,7 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
     { text: ctxLong, short: ctxShort, priority: 100 },
     { text: s.lean ? theme.fg("muted", `lean ${clean(s.lean)}`) : "", priority: 20 },
   ], width, theme));
+  if (s.marimo) rows.push(marimoRow(s.marimo, width, theme));
 
   for (const quota of s.quotas) {
     const age = Math.max(0, s.now - quota.updated);
@@ -606,6 +653,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
       quotas, unavailableQuota,
       statuses: absorbed.rest, autoEffort: absorbed.autoEffort, lean: absorbed.lean, extraBilled: absorbed.extraBilled,
       stash: absorbed.stashed ? { text: stashedPrompt() } : undefined,
+      marimo: absorbed.marimo,
       now: Date.now(),
     };
   };

@@ -51,6 +51,7 @@ instead of the status row:
 | pi-lean-context | `lean: −12k tok` | `lean −12k tok` on the context row |
 | anthropic-billing-guard | `extra usage x3` | `3 requests billed to extra usage` on the Claude limits row |
 | @saadjs/pi-stash | `prompt stashed` | `› Stashed · "first line…" +2 lines · ctrl+s to restore` as the top row, just under the editor |
+| pi-marimo | `marimo: fit.py · running Data loading › Model fit (12s) · 1 error` | its own row under the context row; when narrow, the section shortens to its deepest heading |
 
 Without them nothing changes. A status whose text no longer has the expected shape,
 or a billing notice with no Claude limits row to attach to, stays in the status row
