@@ -52,7 +52,7 @@ instead of the status row:
 | pi-cache-guard | `cache 4:12`, `cache cold` | `cache 4:12` on the context row (cold in the warning color) |
 | anthropic-billing-guard | `extra usage x3` | `3 requests billed to extra usage` on the Claude limits row |
 | @saadjs/pi-stash | `prompt stashed` | `› Stashed · "first line…" +2 lines · ctrl+s to restore` as the top row, just under the editor |
-| pi-marimo | `marimo: fit.py · running Data loading › Model fit (12s) · 1 error` | its own row under the context row; when narrow, the section shortens to its deepest heading |
+| pi-marimo | `marimo: fit.py · running Data loading › Model fit (12s) · 1 error · also prep.py, plots.py` | its own row under the context row: the current notebook (bold) and its kernel, then the other notebooks it follows; when narrow, the others become a count and the section its deepest heading |
 
 Without them nothing changes. A status whose text no longer has the expected shape,
 or a billing notice with no Claude limits row to attach to, stays in the status row

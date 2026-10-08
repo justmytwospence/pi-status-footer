@@ -64,8 +64,8 @@ export interface MarimoStatus {
   notebook: string;
   running?: { section: string; elapsed?: string };
   queued?: number; errors?: number;
-  /** Other notebooks pi-marimo follows besides this one. */
-  others?: number;
+  /** The other notebooks pi-marimo follows, most recently used first (older versions sent only a count). */
+  others?: string[] | number;
   /** Anything else ("disconnected", "not open", "/marimo to pick one"). */
   notes: string[];
 }
@@ -80,10 +80,12 @@ export function parseMarimoStatus(text: string): MarimoStatus | undefined {
     const queued = /^(\d+) queued$/.exec(part);
     const errors = /^(\d+) errors?$/.exec(part);
     const others = /^\+(\d+) open$/.exec(part);
+    const also = /^also (.+)$/.exec(part);
     if (running) status.running = { section: running[1], elapsed: running[2] };
     else if (queued) status.queued = +queued[1];
     else if (errors) status.errors = +errors[1];
     else if (others) status.others = +others[1];
+    else if (also) status.others = also[1].split(", ");
     else status.notes.push(part);
   }
   return status;
@@ -386,19 +388,23 @@ function stashRow(text: string | undefined, width: number, theme: Paint): string
   ], width, theme);
 }
 
-// The notebook pi-marimo follows, and what its kernel is running: the markdown
-// section the running cell sits under (deepest heading kept when narrow).
+// The notebooks pi-marimo follows: the current one (used most recently) first,
+// with what its kernel is doing (the markdown section the running cell sits
+// under, its deepest heading when narrow), then the others by name.
 function marimoRow(m: MarimoStatus, width: number, theme: Paint): string {
   const run = m.running;
   const time = run?.elapsed ? theme.fg("dim", ` ${run.elapsed}`) : "";
   const deepest = run?.section.split(" › ").pop() ?? "";
   return fitSegments([
-    { text: `${theme.fg("muted", "marimo")} ${theme.fg("accent", m.notebook)}`, short: theme.fg("accent", m.notebook), priority: 90 },
+    { text: `${theme.fg("muted", "marimo")} ${theme.bold(theme.fg("accent", m.notebook))}`, short: theme.bold(theme.fg("accent", m.notebook)), priority: 90 },
     { text: run ? `${theme.fg("warning", "running")} ${run.section}${time}` : "",
       short: run ? `${theme.fg("warning", "running")} ${truncateToWidth(deepest, 30)}${time}` : "", priority: 100 },
     { text: m.queued ? theme.fg("muted", `${m.queued} queued`) : "", priority: 30 },
     { text: m.errors ? theme.fg("error", `${m.errors} error${m.errors === 1 ? "" : "s"}`) : "", priority: 95 },
-    { text: m.others ? theme.fg("dim", `+${m.others} open`) : "", priority: 20 },
+    ...(typeof m.others === "number"
+      ? [{ text: m.others ? theme.fg("dim", `+${m.others} open`) : "", priority: 20 }]
+      : [{ text: m.others?.length ? `${theme.fg("dim", "also")} ${theme.fg("muted", m.others.join(", "))}` : "",
+        short: m.others?.length ? theme.fg("dim", `+${m.others.length} more`) : "", priority: 85 }]),
     ...m.notes.map((note): Segment => ({ text: theme.fg("warning", note), priority: 80 })),
   ], width, theme);
 }

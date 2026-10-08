@@ -270,16 +270,20 @@ test("a stashed prompt gets its own row under the editor, with a preview when re
 
 test("pi-marimo's notebook gets its own row under the context row", () => {
   const absorbed = mod.absorbStatuses(new Map([
-    ["marimo", "marimo: fit.py \u00b7 running Data loading \u203a Model fit (12s) \u00b7 2 queued \u00b7 1 error \u00b7 +3 open"],
+    ["marimo", "marimo: fit.py \u00b7 running Data loading \u203a Model fit (12s) \u00b7 2 queued \u00b7 1 error \u00b7 also prep.py, plots.py"],
   ]), { claudeRow: true });
-  assert.deepEqual(absorbed.marimo, { notebook: "fit.py", running: { section: "Data loading \u203a Model fit", elapsed: "12s" }, queued: 2, errors: 1, others: 3, notes: [] });
+  assert.deepEqual(absorbed.marimo, { notebook: "fit.py", running: { section: "Data loading \u203a Model fit", elapsed: "12s" }, queued: 2, errors: 1, others: ["prep.py", "plots.py"], notes: [] });
   assert.deepEqual(absorbed.rest, []);
   const s = { ...fixture(), statuses: absorbed.rest, marimo: absorbed.marimo };
   const rows = mod.renderFooter(s, 160, theme).map(plain);
   assert.match(rows[1], /^Context/);
-  assert.equal(rows[2], "marimo fit.py \u00b7 running Data loading \u203a Model fit 12s \u00b7 2 queued \u00b7 1 error \u00b7 +3 open");
-  // Narrow: the other notebooks and queued go first, then the label, then the section shortens to its deepest heading.
-  assert.equal(plain(mod.renderFooter(s, 50, theme)[2]), "fit.py \u00b7 running Model fit 12s \u00b7 1 error");
+  assert.equal(rows[2], "marimo fit.py \u00b7 running Data loading \u203a Model fit 12s \u00b7 2 queued \u00b7 1 error \u00b7 also prep.py, plots.py");
+  // Narrower: queued goes first, then the other notebooks become a count, then the label goes and the
+  // section shortens to its deepest heading; which notebook is current and how many others never go.
+  assert.equal(plain(mod.renderFooter(s, 90, theme)[2]), "marimo fit.py \u00b7 running Data loading \u203a Model fit 12s \u00b7 1 error \u00b7 also prep.py, plots.py");
+  assert.equal(plain(mod.renderFooter(s, 58, theme)[2]), "fit.py \u00b7 running Model fit 12s \u00b7 1 error \u00b7 +2 more");
+  // An older pi-marimo sent only a count.
+  assert.deepEqual(mod.absorbStatuses(new Map([["marimo", "marimo: fit.py \u00b7 +3 open"]]), { claudeRow: true }).marimo, { notebook: "fit.py", others: 3, notes: [] });
 
   const idle = mod.absorbStatuses(new Map([["marimo", "marimo: fit.py \u00b7 disconnected"]]), { claudeRow: true }).marimo;
   assert.deepEqual(idle, { notebook: "fit.py", notes: ["disconnected"] });
