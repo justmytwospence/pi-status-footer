@@ -461,3 +461,23 @@ if (process.env.STATUS_PREVIEW === "1") {
     console.log(`\n--- ${width} columns ---\n${mod.renderFooter(fixture(), width, getThemeByName("light")).join("\n")}`);
   }
 }
+
+test("lifts accent halfway toward body text, keeping its hue, and leaves other tokens alone", () => {
+  const seen = [];
+  const styled = {
+    colors: { accent: { kind: "rgb", r: 177, g: 147, b: 186 }, text: { kind: "rgb", r: 197, g: 200, b: 198 } },
+    style: (text, { fg }) => { seen.push(fg); return `<${text}>`; },
+    fg: (color, text) => `${color}:${text}`, bold: (text) => `*${text}*`,
+  };
+  const paint = mod.liftAccent(styled);
+  assert.equal(paint.fg("accent", "x"), "<x>");
+  assert.equal(paint.fg("muted", "x"), "muted:x");
+  assert.equal(paint.bold("x"), "*x*");
+  const [fg] = seen;
+  assert.equal(fg.kind, "oklch");
+  assert.ok(fg.l > 0.72 && fg.l < 0.83, `lightness ${fg.l} between accent and text`);
+  assert.ok(Math.abs(fg.h - 316) < 5, `hue ${fg.h} kept`);
+  // Themes without concrete colors (older pi, or indexed colors) keep their own accent.
+  assert.equal(mod.liftAccent(theme), theme);
+  assert.equal(mod.liftAccent({ ...styled, colors: { accent: { kind: "indexed", index: 5 }, text: styled.colors.text } }).fg("accent", "x"), "accent:x");
+});

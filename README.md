@@ -65,7 +65,9 @@ counts are available through `/status details`, not crowded into the footer.
 Rows shorten and drop lower-priority segments to fit actual terminal cell width.
 Model/context and the most-used quota win over secondary statistics. At extremely
 small widths any remaining text is safely truncated. Colors come from the active
-Pi theme; warnings start at 70% used, errors at 90%. No fresh-looking gauge is drawn
+Pi theme, except that the accent (project, model, gauges) is lifted halfway toward the
+theme's body text so it stands out from muted text (same hue; pi >= 1.1). Warnings
+start at 70% used, errors at 90%. No fresh-looking gauge is drawn
 for stale account data.
 
 ## What the numbers mean

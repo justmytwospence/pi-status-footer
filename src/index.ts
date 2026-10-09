@@ -144,6 +144,45 @@ export const duration = (ms: number): string => {
   return `${mins}m`;
 };
 const money = (n: number): string => `$${n.toFixed(n > 0 && n < 0.01 ? 3 : 2)}`;
+// Pi's system theme puts accent at the same contrast as muted gray, so the
+// footer's accents (project, model, gauges) read no stronger than its secondary
+// text. Lift accent halfway from its own OKLab lightness to the theme's body
+// text (the terminal's foreground under the system theme), keeping its hue and
+// chroma: still the terminal's color, one step more prominent. Needs Pi's
+// theme.colors and theme.style (pi >= 1.1); otherwise accent stays as is.
+const ACCENT_LIFT = 0.5;
+type ColorValue = { kind: string; r?: number; g?: number; b?: number; l?: number; c?: number; h?: number };
+interface StyledTheme {
+  colors?: Readonly<Record<string, ColorValue>>;
+  style?(text: string, options: { fg: ColorValue }): string;
+}
+function oklch(color: ColorValue | undefined): { l: number; c: number; h: number } | undefined {
+  if (!color) return undefined;
+  if (color.kind === "oklch") return { l: color.l!, c: color.c!, h: color.h! };
+  if (color.kind !== "rgb") return undefined;
+  const lin = (v: number) => { const x = v / 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+  const [r, g, b] = [lin(color.r!), lin(color.g!), lin(color.b!)];
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+  const B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+  return { l: 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, c: Math.hypot(A, B), h: (Math.atan2(B, A) * 180 / Math.PI + 360) % 360 };
+}
+export function liftAccent(theme: Paint): Paint {
+  const styled = theme as Paint & StyledTheme;
+  if (typeof styled.style !== "function") return theme;
+  let colors: StyledTheme["colors"];
+  try { colors = styled.colors; } catch { return theme; }
+  const accent = oklch(colors?.accent), text = oklch(colors?.text);
+  if (!accent || !text) return theme;
+  const lifted = { kind: "oklch", l: accent.l + (text.l - accent.l) * ACCENT_LIFT, c: accent.c, h: accent.h };
+  return {
+    fg: (color, value) => color === "accent" ? styled.style!(value, { fg: lifted }) : theme.fg(color, value),
+    bold: (value) => theme.bold(value),
+  };
+}
+
 function heat(pct: number): "accent" | "warning" | "error" {
   if (pct >= 90) return "error";
   if (pct >= 70) return "warning";
@@ -683,7 +722,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
       requestRender = render;
       const unsubscribe = footerData.onBranchChange(() => { void updateGit(true); render(); });
       return {
-        render(width: number) { return renderFooter(snapshot(footerData.getGitBranch(), footerData.getExtensionStatuses()), width, theme); },
+        render(width: number) { return renderFooter(snapshot(footerData.getGitBranch(), footerData.getExtensionStatuses()), width, liftAccent(theme)); },
         invalidate() {}, // Colors are evaluated on every render, never cached.
         dispose() { unsubscribe(); if (requestRender === render) requestRender = undefined; },
       };
