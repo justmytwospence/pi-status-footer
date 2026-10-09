@@ -206,9 +206,9 @@ test("extension statuses wrap without losing notices or ANSI, no duplicate task 
   const s = fixture();
   s.statuses = ["\x1b[31mPLAN mode\x1b[0m", "background task FAILED", "stash saved", "long\nstatus\ttext"];
   const rows = mod.renderFooter(s, 30, theme);
-  const text = rows.slice(3).map(plain).join(" ");
+  const text = rows.slice(2).map(plain).join(" ");
   for (const word of ["PLAN", "FAILED", "stash", "status"]) assert.ok(text.includes(word));
-  assert.ok(rows.slice(3).join("").includes("\x1b[31m"));
+  assert.ok(rows.slice(2).join("").includes("\x1b[31m"));
 });
 
 test("companion extension statuses fold into their rows, and degrade when absent or reshaped", () => {
@@ -229,12 +229,12 @@ test("companion extension statuses fold into their rows, and degrade when absent
     assert.equal(mod.absorbStatuses(new Map([["cache-guard", text]]), { claudeRow: false }).cache, text.slice(6));
   }
   assert.deepEqual(mod.absorbStatuses(new Map([["cache-guard", "cache is weird"]]), { claudeRow: false }).rest, ["cache is weird"]);
-  assert.match(rows[2], /3 requests billed to extra usage/);
+  assert.match(rows.at(-1), /3 requests billed to extra usage/);
   assert.doesNotMatch(rows.join("\n"), /effort:|lean:|extra usage x3|cache-guard/);
-  assert.match(rows.at(-1), /plan: A working.* gate: /);
+  assert.match(rows[2], /plan: A working.* gate: /);
   // The model never drops for a companion's segment, and every row fits.
   for (let width = 1; width <= 160; width++) assert.ok(mod.renderFooter(s, width, theme).every((row) => visibleWidth(row) <= width));
-  assert.match(plain(mod.renderFooter(s, 50, theme)[2]), /extra x3/);
+  assert.match(plain(mod.renderFooter(s, 50, theme).at(-1)), /extra x3/);
 
   // Companions not installed (no statuses): the plain footer.
   const bare = mod.absorbStatuses(new Map(), { claudeRow: true });

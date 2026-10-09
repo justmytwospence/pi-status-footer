@@ -484,6 +484,14 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
     { text: s.cache ? `cache ${theme.fg(s.cache.startsWith("cold") ? "warning" : "muted", clean(s.cache))}` : "", priority: 30 },
   ], width, theme));
   if (s.marimo) rows.push(marimoRow(s.marimo, width, theme));
+  // Statuses remain owned by their publishers. Wrap instead of silently dropping
+  // plan mode, background failures, or other extension notices at the right edge.
+  if (s.statuses.length) {
+    const text = s.statuses.map((status) => status.replace(/[\r\n\t]/g, " ")).join(sep);
+    rows.push(...wrapTextWithAnsi(text, width));
+  }
+
+  // Subscription limits go last: they are usually the longest rows.
 
   for (const quota of s.quotas) {
     const age = Math.max(0, s.now - quota.updated);
@@ -520,12 +528,6 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
     rows.push(fitSegments(segments, width, theme));
   }
   if (s.unavailableQuota) rows.push(truncateToWidth(theme.fg("dim", `${s.unavailableQuota} · limits unavailable`), width));
-  // Statuses remain owned by their publishers. Wrap instead of silently dropping
-  // plan mode, background failures, or other extension notices at the right edge.
-  if (s.statuses.length) {
-    const text = s.statuses.map((status) => status.replace(/[\r\n\t]/g, " ")).join(sep);
-    rows.push(...wrapTextWithAnsi(text, width));
-  }
   return rows.map((row) => truncateToWidth(row, width));
 }
 
