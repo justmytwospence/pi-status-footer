@@ -32,13 +32,15 @@ readings fresh.
 
 ## Layout
 
-1. Project and branch, with words such as `modified` and `2 ahead`; model and
+1. Project and git status, `[wt ]<branch> ✖N ● ↑N ↓N`: `wt` in a linked
+   worktree, then red `✖N` unmerged paths, yellow `●` any staged, modified or
+   untracked file, green `↑N` ahead and red `↓N` behind upstream. Model and
    labeled reasoning level on the right. Waiting/errors take priority.
 2. `Context 32% used` with a gauge.
-3. Provider/account limits explicitly labeled as percent **used**, with reset
-   countdowns when supported.
-4. Other extensions' status notices, only when present. Notices wrap rather than
+3. Other extensions' status notices, only when present. Notices wrap rather than
    disappearing at the right edge. Existing task widgets are not duplicated.
+4. Provider/account limits explicitly labeled as percent **used**, with reset
+   countdowns when supported. Last, since they are usually the longest rows.
 
 ### Companion extensions
 

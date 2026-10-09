@@ -454,13 +454,17 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
   const rows: string[] = [];
   const sep = theme.fg("dim", " · ");
   if (s.stash) rows.push(stashRow(s.stash.text, width, theme));
-  const marks = [g.conflicts ? theme.fg("error", `${g.conflicts} conflicts`) : "",
-    g.staged + g.changed + g.untracked ? theme.fg("warning", "modified") : "",
-    g.ahead ? `${g.ahead} ahead` : "", g.behind ? `${g.behind} behind` : ""].filter(Boolean).join(", ");
+  // The git status every prompt and footer shares (zsh, Claude Code, opencode, herdr):
+  // [wt ]<branch> ✖N ● ↑N ↓N for conflicts, any change, ahead, behind.
+  const marks = [g.conflicts ? theme.fg("error", `✖${g.conflicts}`) : "",
+    g.staged + g.changed + g.untracked ? theme.fg("warning", "●") : "",
+    g.ahead ? theme.fg("success", `↑${g.ahead}`) : "",
+    g.behind ? theme.fg("error", `↓${g.behind}`) : ""].filter(Boolean).join(" ");
   const project = theme.fg("accent", clean(g.project ?? (path.basename(s.cwd) || s.cwd)));
+  const tag = g.worktree ? `${theme.fg("dim", "wt")} ` : "";
   let branch = g.unavailable ? "Git unavailable" : "";
-  if (g.branch) branch = `${g.worktree ? "worktree" : "branch"} ${clean(g.branch)}${marks ? ` (${marks})` : ""}`;
-  const branchShort = branch ? `${truncateToWidth(clean(g.branch ?? "Git unavailable"), 14)}${marks ? ` (${marks})` : ""}` : "";
+  if (g.branch) branch = `${tag}${clean(g.branch)}${marks ? ` ${marks}` : ""}`;
+  const branchShort = g.branch ? `${tag}${truncateToWidth(clean(g.branch), 14)}${marks ? ` ${marks}` : ""}` : branch;
   const phaseText = s.phase ? theme.fg(s.phase === "error" ? "error" : "warning", s.phase) : "";
   const model = theme.bold(theme.fg("accent", shortModel(s.model)));
   const reasoning = s.thinking ? `reasoning ${s.thinking}${s.autoEffort ? " (auto)" : ""}` : "";
@@ -626,7 +630,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
     const epoch = generation, cwd = ctx.cwd;
     try {
       const [status, roots, diff] = await Promise.all([
-        exec("git", ["status", "--porcelain=v2", "--branch", "-z"], cwd),
+        exec("git", ["--no-optional-locks", "status", "--porcelain=v2", "--branch", "-z"], cwd),
         exec("git", ["rev-parse", "--show-toplevel", "--absolute-git-dir", "--git-common-dir"], cwd),
         exec("git", ["diff", "--shortstat", "HEAD", "--"], cwd),
       ]);

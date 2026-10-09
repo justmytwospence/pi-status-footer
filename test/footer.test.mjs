@@ -171,12 +171,20 @@ test("narrow layout protects model, context and the most-used quota", () => {
   assert.doesNotMatch(rows.join("\n"), /diff|compact/);
 });
 
+test("git status uses the shared [wt ]branch ✖N ● ↑N ↓N format", () => {
+  const s = fixture();
+  s.git = { ...s.git, branch: "feat/x", worktree: true, conflicts: 2, ahead: 1, behind: 3 };
+  assert.match(plain(mod.renderFooter(s, 160, theme)[0]), /dotfiles · wt feat\/x ✖2 ● ↑1 ↓3/);
+  s.git = { ...s.git, worktree: false, conflicts: 0, staged: 0, changed: 0, untracked: 0, ahead: 0, behind: 0 };
+  assert.match(plain(mod.renderFooter(s, 160, theme)[0]), /dotfiles · feat\/x\s{2,}/);
+});
+
 test("wide layout uses explicit labels without reintroducing secondary metrics", () => {
   const rows = mod.renderFooter(fixture(), 160, theme);
-  assert.match(rows[0], /dotfiles.*branch main \(modified, 2 ahead\)\s{2,}opus-5\.5 · reasoning xhigh/);
+  assert.match(rows[0], /dotfiles · main ● ↑2\s{2,}opus-5\.5 · reasoning xhigh/);
   assert.match(rows[1], /Context 28% used [━─]{8}/);
   assert.doesNotMatch(rows[1], /cost/);
-  assert.doesNotMatch(rows.slice(0, 2).join("\n"), /cache|OAuth|diff|compact|↑|↓|56k\/200k/);
+  assert.doesNotMatch(rows.slice(0, 2).join("\n"), /cache|OAuth|diff|compact|56k\/200k/);
   assert.match(rows[2], /5h 32% used/);
   assert.doesNotMatch(rows[2], /extra off/);
 });
