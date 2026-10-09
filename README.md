@@ -50,8 +50,8 @@ instead of the status row:
 | Extension | Status | Shown as |
 | --- | --- | --- |
 | pi-auto-effort | `effort: high (auto)` | `reasoning high (auto)` on the model row |
-| pi-lean-context | `lean: −12k tok` | `lean −12k tok` on the context row |
 | pi-cache-guard | `cache 4:12`, `cache cold` | `cache 4:12` on the context row (cold in the warning color) |
+| pi-cache-guard (Jev trimming, key `lean-context`) | `lean: −12k tok` | `lean −12k tok` on the context row |
 | anthropic-billing-guard | `extra usage x3` | `3 requests billed to extra usage` on the Claude limits row |
 | @saadjs/pi-stash | `prompt stashed` | `› Stashed · "first line…" +2 lines · ctrl+s to restore` as the top row, just under the editor |
 | pi-marimo | `marimo: fit.py · running Data loading › Model fit (12s) · 1 error · also prep.py, plots.py` | its own row under the context row: the current notebook (bold) and its kernel, then the other notebooks it follows; when narrow, the others become a count and the section its deepest heading |

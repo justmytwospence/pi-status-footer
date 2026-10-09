@@ -97,7 +97,7 @@ export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; cache?: 
 // status whose text no longer matches the expected shape falls through to the
 // generic status row unchanged, so a format change never hides a notice.
 //   auto-effort       (pi-auto-effort)          "effort: high (auto)"  -> "reasoning high (auto)"
-//   lean-context      (pi-lean-context)         "lean: −12k tok"       -> context row
+//   lean-context      (pi-cache-guard's Jev)    "lean: −12k tok"       -> context row
 //   cache-guard       (pi-cache-guard)          "cache 4:12"           -> context row
 //   anthropic-billing (anthropic-billing-guard) "extra usage x3"       -> Claude limits row
 //   prompt-stash      (@saadjs/pi-stash)        "prompt stashed"       -> its own row under the editor
