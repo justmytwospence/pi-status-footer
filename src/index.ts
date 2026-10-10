@@ -57,6 +57,33 @@ export interface Snapshot {
   /** A prompt stashed by @saadjs/pi-stash; text is its content when readable. */
   stash?: { text?: string };
   marimo?: MarimoStatus;
+  bg?: BgItem[];
+}
+
+/** One item of pi-bg's status: a running job, a service, a task that just ended, or a count of more. */
+export type BgItem =
+  | { kind: "job"; name: string; elapsed: string }
+  | { kind: "service"; name: string; state: "ready" | "starting" | "up"; kept: boolean }
+  | { kind: "ended"; name: string; mark: "✓" | "✗" | "■" }
+  | { kind: "more"; count: number };
+
+/** pi-bg's status, `bg: tests 2:14 · vite ready · lint ✗ · +2`, or undefined when any item is unfamiliar. */
+export function parseBgStatus(text: string): BgItem[] | undefined {
+  const match = /^bg: (.+)$/.exec(text);
+  if (!match) return undefined;
+  const items: BgItem[] = [];
+  for (const part of match[1].split(" · ")) {
+    const job = /^(.+) (\d+:\d\d|\d+h\d\dm)$/.exec(part);
+    const service = /^(.+) (ready|starting|up)( \(kept\))?$/.exec(part);
+    const ended = /^(.+) ([✓✗■])$/.exec(part);
+    const more = /^\+(\d+)$/.exec(part);
+    if (job) items.push({ kind: "job", name: job[1], elapsed: job[2] });
+    else if (service) items.push({ kind: "service", name: service[1], state: service[2] as "ready" | "starting" | "up", kept: Boolean(service[3]) });
+    else if (ended) items.push({ kind: "ended", name: ended[1], mark: ended[2] as "✓" | "✗" | "■" });
+    else if (more) items.push({ kind: "more", count: +more[1] });
+    else return undefined;
+  }
+  return items;
 }
 
 /** pi-marimo's status, parsed: the notebook and the ` · ` separated parts after it. */
@@ -91,7 +118,7 @@ export function parseMarimoStatus(text: string): MarimoStatus | undefined {
   return status;
 }
 
-export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; cache?: string; extraBilled?: number; stashed?: boolean; marimo?: MarimoStatus; rest: string[] }
+export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; cache?: string; extraBilled?: number; stashed?: boolean; marimo?: MarimoStatus; bg?: BgItem[]; rest: string[] }
 // Statuses from our own companion extensions that read better inside the footer
 // rows they describe. Each is optional: absent extensions publish nothing, and a
 // status whose text no longer matches the expected shape falls through to the
@@ -102,6 +129,7 @@ export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; cache?: 
 //   anthropic-billing (anthropic-billing-guard) "extra usage x3"       -> Claude limits row
 //   prompt-stash      (@saadjs/pi-stash)        "prompt stashed"       -> its own row under the editor
 //   marimo            (pi-marimo)               "marimo: nb.py · ..."  -> its own row under the context row
+//   bg                (pi-bg)                   "bg: tests 2:14 · ..." -> its own row under that
 // Everything else (plan, gate, mcp, ...) stays in the status row.
 export function absorbStatuses(statuses: ReadonlyMap<string, string>, options: { claudeRow: boolean }): AbsorbedStatuses {
   const result: AbsorbedStatuses = { autoEffort: false, rest: [] };
@@ -117,6 +145,8 @@ export function absorbStatuses(statuses: ReadonlyMap<string, string>, options: {
     if (key === "prompt-stash" && plainText === "prompt stashed") { result.stashed = true; continue; }
     const marimo = key === "marimo" ? parseMarimoStatus(plainText) : undefined;
     if (marimo) { result.marimo = marimo; continue; }
+    const bg = key === "bg" ? parseBgStatus(plainText) : undefined;
+    if (bg) { result.bg = bg; continue; }
     // Use the flat Nerd Font plug for MCP; preserve its theme color and text.
     result.rest.push(key === "mcp" ? text.replace(/\u{1f50c}[\ufe0e\ufe0f]?/u, "\uf1e6") : text);
   }
@@ -448,6 +478,23 @@ function marimoRow(m: MarimoStatus, width: number, theme: Paint): string {
   ], width, theme);
 }
 
+// pi-bg's tasks: running jobs with their time, services with their state, then
+// what ended in the last minute. Running and failed work wins when narrow.
+function bgRow(items: BgItem[], width: number, theme: Paint): string {
+  const segments: Segment[] = [{ text: theme.fg("muted", "bg"), priority: 110 }];
+  for (const item of items) {
+    if (item.kind === "job") segments.push({ text: `${item.name} ${theme.fg("dim", item.elapsed)}`, short: item.name, priority: 100 });
+    else if (item.kind === "service") {
+      const state = theme.fg(item.state === "starting" ? "warning" : "muted", item.state);
+      segments.push({ text: `${item.name} ${state}${item.kept ? theme.fg("dim", " kept") : ""}`, short: item.name, priority: 70 });
+    } else if (item.kind === "ended") {
+      const mark = item.mark === "✓" ? theme.fg("success", "✓") : item.mark === "✗" ? theme.fg("error", "✗") : theme.fg("muted", "■");
+      segments.push({ text: `${theme.fg("dim", item.name)} ${mark}`, priority: item.mark === "✗" ? 90 : 40 });
+    } else segments.push({ text: theme.fg("dim", `+${item.count}`), priority: 20 });
+  }
+  return fitSegments(segments, width, theme);
+}
+
 export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): string[] {
   if (width <= 0) return [];
   const s = snapshot, g = s.git;
@@ -488,6 +535,7 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
     { text: s.cache ? `cache ${theme.fg(s.cache.startsWith("cold") ? "warning" : "muted", clean(s.cache))}` : "", priority: 30 },
   ], width, theme));
   if (s.marimo) rows.push(marimoRow(s.marimo, width, theme));
+  if (s.bg?.length) rows.push(bgRow(s.bg, width, theme));
   // Statuses remain owned by their publishers. Wrap instead of silently dropping
   // plan mode, background failures, or other extension notices at the right edge.
   if (s.statuses.length) {
@@ -714,7 +762,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
       quotas, unavailableQuota,
       statuses: absorbed.rest, autoEffort: absorbed.autoEffort, lean: absorbed.lean, cache: absorbed.cache, extraBilled: absorbed.extraBilled,
       stash: absorbed.stashed ? { text: stashedPrompt() } : undefined,
-      marimo: absorbed.marimo,
+      marimo: absorbed.marimo, bg: absorbed.bg,
       now: Date.now(),
     };
   };

@@ -276,6 +276,25 @@ test("a stashed prompt gets its own row under the editor, with a preview when re
   assert.deepEqual(mod.absorbStatuses(new Map([["prompt-stash", "2 prompts stashed"]]), { claudeRow: true }).rest, ["2 prompts stashed"]);
 });
 
+test("pi-bg's tasks get their own row under the context row", () => {
+  const absorbed = mod.absorbStatuses(new Map([["bg", "bg: tests 2:14 \u00b7 vite ready (kept) \u00b7 lint \u2717 \u00b7 fmt \u2713 \u00b7 +1"]]), { claudeRow: true });
+  assert.deepEqual(absorbed.bg, [
+    { kind: "job", name: "tests", elapsed: "2:14" },
+    { kind: "service", name: "vite", state: "ready", kept: true },
+    { kind: "ended", name: "lint", mark: "\u2717" },
+    { kind: "ended", name: "fmt", mark: "\u2713" },
+    { kind: "more", count: 1 },
+  ]);
+  assert.deepEqual(absorbed.rest, []);
+  const s = { ...fixture(), statuses: absorbed.rest, bg: absorbed.bg };
+  const rows = mod.renderFooter(s, 160, theme).map(plain);
+  assert.equal(rows[2], "bg \u00b7 tests 2:14 \u00b7 vite ready kept \u00b7 lint \u2717 \u00b7 fmt \u2713 \u00b7 +1");
+  // Narrow: what ended fine and the count go first; running and failed work stays.
+  assert.equal(plain(mod.renderFooter(s, 34, theme)[2]), "bg \u00b7 tests 2:14 \u00b7 vite \u00b7 lint \u2717");
+  // Another shape stays in the status row.
+  assert.deepEqual(mod.absorbStatuses(new Map([["bg", "bg: something new happened"]]), { claudeRow: true }).rest, ["bg: something new happened"]);
+});
+
 test("pi-marimo's notebook gets its own row under the context row", () => {
   const absorbed = mod.absorbStatuses(new Map([
     ["marimo", "marimo: fit.py \u00b7 running Data loading \u203a Model fit (12s) \u00b7 2 queued \u00b7 1 error \u00b7 also prep.py, plots.py"],
