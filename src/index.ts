@@ -54,7 +54,7 @@ export interface Snapshot {
   totals: Totals; cacheHit?: number; git: GitInfo;
   quotas: Quota[]; unavailableQuota?: string; statuses: string[]; now: number;
   /** Folded in from companion extensions' statuses when they are installed. */
-  autoEffort?: boolean; lean?: string; cache?: string; extraBilled?: number;
+  autoEffort?: boolean; autoEffortDetail?: string; lean?: string; cache?: string; extraBilled?: number;
   /** A prompt stashed by @saadjs/pi-stash; text is its content when readable. */
   stash?: { text?: string };
   marimo?: MarimoStatus;
@@ -121,12 +121,13 @@ export function parseMarimoStatus(text: string): MarimoStatus | undefined {
   return status;
 }
 
-export interface AbsorbedStatuses { autoEffort: boolean; lean?: string; cache?: string; extraBilled?: number; stashed?: boolean; marimo?: MarimoStatus; bg?: BgItem[]; rest: string[] }
+export interface AbsorbedStatuses { autoEffort: boolean; autoEffortDetail?: string; lean?: string; cache?: string; extraBilled?: number; stashed?: boolean; marimo?: MarimoStatus; bg?: BgItem[]; rest: string[] }
 // Statuses from our own companion extensions that read better inside the footer
 // rows they describe. Each is optional: absent extensions publish nothing, and a
 // status whose text no longer matches the expected shape falls through to the
 // generic status row unchanged, so a format change never hides a notice.
-//   auto-effort       (pi-auto-effort)          "effort: high (auto)"  -> "reasoning high (auto)"
+//   auto-effort       (pi-auto-effort)          "effort: high (auto ↑)" -> "reasoning high (auto ↑)"
+//                                               (also the older "(auto)", and ", limited: 5h 84%")
 //   lean-context      (pi-cache-guard's Jev)    "lean: −12k tok"       -> context row
 //   cache-guard       (pi-cache-guard)          "cache 4:12"           -> context row
 //   anthropic-billing (anthropic-billing-guard) "extra usage x3"       -> Claude limits row
@@ -138,7 +139,12 @@ export function absorbStatuses(statuses: ReadonlyMap<string, string>, options: {
   const result: AbsorbedStatuses = { autoEffort: false, rest: [] };
   for (const [key, text] of [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     const plainText = clean(text);
-    if (key === "auto-effort" && /^effort: \S+ \(auto\)$/.test(plainText)) { result.autoEffort = true; continue; }
+    const effort = key === "auto-effort" ? /^effort: \S+ \(auto(?: ([^()]+))?\)$/.exec(plainText) : null;
+    if (effort) {
+      result.autoEffort = true;
+      if (effort[1]) result.autoEffortDetail = effort[1];
+      continue;
+    }
     const lean = key === "lean-context" ? /^lean: (.+)$/.exec(plainText) : null;
     if (lean) { result.lean = lean[1]; continue; }
     const cache = key === "cache-guard" ? /^cache (\d+:\d\d|\d+h\d\dm|cold(?: \(model\)|\?)?)$/.exec(plainText) : null;
@@ -565,7 +571,8 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
   const branchShort = g.branch ? `${tag}${truncateToWidth(clean(g.branch), 14)}${marks ? ` ${marks}` : ""}` : branch;
   const phaseText = s.phase ? theme.fg(s.phase === "error" ? "error" : "warning", s.phase) : "";
   const model = theme.bold(theme.fg("accent", shortModel(s.model)));
-  const reasoning = s.thinking ? `reasoning ${s.thinking}${s.autoEffort ? " (auto)" : ""}` : "";
+  const auto = s.autoEffort ? ` (auto${s.autoEffortDetail ? ` ${clean(s.autoEffortDetail)}` : ""})` : "";
+  const reasoning = s.thinking ? `reasoning ${s.thinking}${auto}` : "";
   const identity = `${model}${reasoning ? ` · ${theme.fg("muted", reasoning)}` : ""}`;
   rows.push(fitSegments([
     { text: project, priority: 60 },
@@ -812,7 +819,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
       context: current.getContextUsage() ?? { tokens: null, contextWindow: current.model?.contextWindow ?? 0, percent: null },
       totals, cacheHit, git: { ...git, branch: git.branch ?? branch ?? undefined },
       quotas, unavailableQuota,
-      statuses: absorbed.rest, autoEffort: absorbed.autoEffort, lean: absorbed.lean, cache: absorbed.cache, extraBilled: absorbed.extraBilled,
+      statuses: absorbed.rest, autoEffort: absorbed.autoEffort, autoEffortDetail: absorbed.autoEffortDetail, lean: absorbed.lean, cache: absorbed.cache, extraBilled: absorbed.extraBilled,
       stash: absorbed.stashed ? { text: stashedPrompt() } : undefined,
       marimo: absorbed.marimo, bg: absorbed.bg, borderGauge,
       now: Date.now(),

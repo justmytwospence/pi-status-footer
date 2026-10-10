@@ -56,7 +56,7 @@ instead of the status row:
 
 | Extension | Status | Shown as |
 | --- | --- | --- |
-| pi-auto-effort | `effort: high (auto)` | `reasoning high (auto)` on the model row |
+| pi-auto-effort | `effort: high (auto ↑)` | `reasoning high (auto ↑)` on the model row (arrow and any `limited:` note kept) |
 | pi-cache-guard | `cache 4:12`, `cache cold` | `cache 4:12` on the context row (cold in the warning color) |
 | pi-cache-guard (Jev trimming, key `lean-context`) | `lean: −12k tok` | `lean −12k tok` on the context row |
 | anthropic-billing-guard | `extra usage x3` | `3 requests billed to extra usage` on the Claude limits row |

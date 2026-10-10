@@ -244,6 +244,14 @@ test("companion extension statuses fold into their rows, and degrade when absent
   for (let width = 1; width <= 160; width++) assert.ok(mod.renderFooter(s, width, theme).every((row) => visibleWidth(row) <= width));
   assert.match(plain(mod.renderFooter(s, 50, theme).at(-1)), /extra x3/);
 
+  // The trend arrow and a limit note ride along inside the parentheses.
+  for (const [text, shown] of [["effort: low (auto \u2192)", "auto \u2192"], ["effort: medium (auto \u2193, limited: 5h 84%)", "auto \u2193, limited: 5h 84%"]]) {
+    const a = mod.absorbStatuses(new Map([["auto-effort", text]]), { claudeRow: false });
+    assert.deepEqual(a.rest, []);
+    const row = plain(mod.renderFooter({ ...fixture(), thinking: "low", statuses: a.rest, autoEffort: a.autoEffort, autoEffortDetail: a.autoEffortDetail }, 200, theme)[0]);
+    assert.ok(row.includes(`reasoning low (${shown})`), row);
+  }
+
   // Companions not installed (no statuses): the plain footer.
   const bare = mod.absorbStatuses(new Map(), { claudeRow: true });
   assert.deepEqual(bare, { autoEffort: false, rest: [] });
