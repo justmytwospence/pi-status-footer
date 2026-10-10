@@ -1,5 +1,6 @@
-// A display-only footer. No model requests, editor replacement, or prompt
-// modifications. It touches two credentials, each sent only to its own
+// A display-only footer. No model requests or prompt modifications; the editor
+// is kept (whichever one other extensions installed) and only its two border
+// lines are redrawn to carry the context gauge. It touches two credentials, each sent only to its own
 // provider's usage endpoint: Pi's Codex OAuth token (from Pi's model registry,
 // to ChatGPT's usage endpoint, as Codex CLI's /status) and Claude Code's OAuth
 // token (Keychain or ~/.claude/.credentials.json, to Anthropic's OAuth usage
@@ -11,7 +12,7 @@ import { mkdir, readFile, rename, rmdir, stat, writeFile } from "node:fs/promise
 import { homedir } from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, type ExtensionAPI, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
 const STATE_KEY = "personal-status-footer";
@@ -58,6 +59,8 @@ export interface Snapshot {
   stash?: { text?: string };
   marimo?: MarimoStatus;
   bg?: BgItem[];
+  /** The editor's border lines draw the context gauge, so the context row leaves it out. */
+  borderGauge?: boolean;
 }
 
 /** One item of pi-bg's status: a running job, a service, a task that just ended, or a count of more. */
@@ -430,6 +433,54 @@ function gauge(theme: Paint, used: number, cells = 8): string {
   return theme.fg(heat(used), "━".repeat(filled)) + theme.fg("dim", "─".repeat(cells - filled));
 }
 const percent = (value: number): string => `${+value.toFixed(1)}%`;
+
+/**
+ * An editor border line with the context gauge drawn in: the used share of the
+ * width in heavy rule in the heat color, the rest as the editor's own border
+ * (`border` keeps pi-vim's mode colors). A scroll label (" ↑ 3 more ") stays
+ * centered over it, as in pi's own border.
+ */
+export function gaugeBorder(width: number, used: number, theme: Paint, border: (text: string) => string, label = ""): string {
+  if (width <= 0) return "";
+  const pct = Math.min(100, Math.max(0, used));
+  const filled = Math.round(pct * width / 100);
+  const span = (from: number, to: number) => {
+    const heavy = Math.max(0, Math.min(to, filled) - from), light = to - from - heavy;
+    return (heavy ? theme.fg(heat(pct), "━".repeat(heavy)) : "") + (light ? border("─".repeat(light)) : "");
+  };
+  const labelWidth = visibleWidth(label);
+  if (!label || labelWidth + 2 > width) return span(0, width);
+  const start = Math.floor((width - labelWidth) / 2);
+  return span(0, start) + border(label) + span(start + labelWidth, width);
+}
+
+interface BorderedEditor {
+  borderColor?: (text: string) => string;
+  renderTopBorder?(width: number, hidden: number): string;
+  renderBottomBorder?(width: number, hidden: number): string;
+  [ORIGINAL_BORDERS]?: { top: BorderRenderer; bottom: BorderRenderer };
+}
+type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
+type BorderRenderer = (this: BorderedEditor, width: number, hidden: number) => string;
+const ORIGINAL_BORDERS = Symbol.for("pi-status-footer/original-borders");
+/**
+ * Redraw a pi Editor's (or subclass's) border lines as the context gauge while
+ * `used()` returns a percentage; otherwise they render as before. Returns false
+ * for an editor without pi's border hooks, which is left alone.
+ */
+export function drawGaugeOnBorders(editor: unknown, used: () => number | null, theme: () => Paint | undefined): boolean {
+  const e = editor as BorderedEditor;
+  if (typeof e.renderTopBorder !== "function" || typeof e.renderBottomBorder !== "function") return false;
+  const original = e[ORIGINAL_BORDERS] ??= { top: e.renderTopBorder, bottom: e.renderBottomBorder };
+  const draw = (fallback: BorderRenderer, arrow: string): BorderRenderer => function (width, hidden) {
+    const pct = used(), paint = theme();
+    if (pct === null || !paint || typeof this.borderColor !== "function") return fallback.call(this, width, hidden);
+    return gaugeBorder(width, pct, paint, this.borderColor, hidden > 0 ? ` ${arrow} ${hidden} more ` : "");
+  };
+  e.renderTopBorder = draw(original.top, "↑");
+  e.renderBottomBorder = draw(original.bottom, "↓");
+  return true;
+}
 export function shortModel(value: string): string {
   return clean(value).replace(/^claude-/, "").replace(/-20\d{6}$/, "").replace(/(\d)-(\d)/g, "$1.$2");
 }
@@ -527,7 +578,7 @@ export function renderFooter(snapshot: Snapshot, width: number, theme: Paint): s
 
   const context = s.context.percent;
   const ctxShort = `Context ${context === null ? "unknown" : theme.fg(heat(context), percent(context))}`;
-  const ctxLong = `${ctxShort}${context === null ? "" : ` used ${gauge(theme, context)}`}`;
+  const ctxLong = `${ctxShort}${context === null ? "" : s.borderGauge ? " used" : ` used ${gauge(theme, context)}`}`;
   rows.push(fitSegments([
     { text: ctxLong, short: ctxShort, priority: 100 },
     { text: s.lean ? theme.fg("muted", `lean ${clean(s.lean)}`) : "", priority: 20 },
@@ -599,6 +650,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
   let requestRender: (() => void) | undefined;
   let git = emptyGit(), gitBusy = false, gitChecked = 0;
   let quotaBusy = false, quotaChecked = 0;
+  let borderGauge = false;
   let codexBusy = false, codexChecked = 0, codexAbort: AbortController | undefined;
   let claude: Quota | undefined, codex: Quota | undefined;
   let phase: string | undefined;
@@ -762,7 +814,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
       quotas, unavailableQuota,
       statuses: absorbed.rest, autoEffort: absorbed.autoEffort, lean: absorbed.lean, cache: absorbed.cache, extraBilled: absorbed.extraBilled,
       stash: absorbed.stashed ? { text: stashedPrompt() } : undefined,
-      marimo: absorbed.marimo, bg: absorbed.bg,
+      marimo: absorbed.marimo, bg: absorbed.bg, borderGauge,
       now: Date.now(),
     };
   };
@@ -781,6 +833,23 @@ export default function statusFooter(pi: ExtensionAPI): void {
         dispose() { unsubscribe(); if (requestRender === render) requestRender = undefined; },
       };
     });
+  };
+  // Wrap whatever editor is installed (pi-vim's, pi-stash's wrapper, or pi's
+  // own) instead of replacing it. Extensions that install an editor without
+  // chaining must load before this one. Our own earlier wrapper is unwrapped so
+  // repeated sessions do not stack.
+  const wrapEditor = (context: ExtensionContext) => {
+    const current = context.ui.getEditorComponent() as (EditorFactory & { [ORIGINAL_BORDERS]?: EditorFactory | null }) | undefined;
+    const previous = current && ORIGINAL_BORDERS in current ? current[ORIGINAL_BORDERS] ?? undefined : current;
+    const factory: EditorFactory & { [ORIGINAL_BORDERS]?: EditorFactory | null } = (tui, theme, keybindings) => {
+      const editor = previous?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
+      borderGauge = drawGaugeOnBorders(editor,
+        () => active && enabled && ctx ? ctx.getContextUsage()?.percent ?? null : null,
+        () => ctx ? liftAccent(ctx.ui.theme) : undefined);
+      return editor;
+    };
+    factory[ORIGINAL_BORDERS] = previous ?? null;
+    context.ui.setEditorComponent(factory);
   };
   const stop = () => {
     active = false; generation++;
@@ -806,7 +875,7 @@ export default function statusFooter(pi: ExtensionAPI): void {
         enabled = data.enabled !== false; showAll = data.showAll === true;
       }
     }
-    account(); attach();
+    account(); wrapEditor(context); attach();
     void updateGit(true); void updateQuota(true); void updateCodex(0);
     timer = setInterval(() => { account(); void updateGit(); void updateQuota(); void updateCodex(); requestRender?.(); }, TICK_MS);
     timer.unref();

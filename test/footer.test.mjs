@@ -329,7 +329,7 @@ test("external text is sanitized and over-100 gauges are bounded", () => {
 
 function host(entries = [], cwd = os.tmpdir(), mode = "tui") {
   const handlers = new Map(), commands = new Map(), statuses = new Map(), notices = [];
-  let footer, disposed = 0, paints = 0, name = "";
+  let footer, editorFactory, disposed = 0, paints = 0, name = "";
   const pi = {
     on(event, handler) { handlers.set(event, handler); },
     registerCommand(key, command) { commands.set(key, command); },
@@ -356,10 +356,14 @@ function host(entries = [], cwd = os.tmpdir(), mode = "tui") {
         });
       },
       notify(text) { notices.push(text); },
+      theme,
+      getEditorComponent: () => editorFactory,
+      setEditorComponent(factory) { editorFactory = factory; },
     },
   };
   mod.default(pi);
   return { handlers, commands, ctx, entries, statuses, notices, pi,
+    get editorFactory() { return editorFactory; }, set editorFactory(f) { editorFactory = f; },
     get footer() { return footer; }, get disposed() { return disposed; }, get paints() { return paints; },
   };
 }
@@ -507,4 +511,63 @@ test("lifts accent halfway toward body text, keeping its hue, and leaves other t
   // Themes without concrete colors (older pi, or indexed colors) keep their own accent.
   assert.equal(mod.liftAccent(theme), theme);
   assert.equal(mod.liftAccent({ ...styled, colors: { accent: { kind: "indexed", index: 5 }, text: styled.colors.text } }).fg("accent", "x"), "accent:x");
+});
+
+test("the editor borders carry the context gauge, keeping the editor's border color and scroll label", () => {
+  const border = (text) => `<${text}>`;
+  const row = mod.gaugeBorder(20, 25, { fg: (color, text) => `[${color}:${text}]`, bold: (t) => t }, border);
+  assert.equal(row, `[accent:${"━".repeat(5)}]<${"─".repeat(15)}>`);
+  const hot = plain(mod.gaugeBorder(20, 95, theme, (t) => t));
+  assert.equal(hot, "━".repeat(19) + "─");
+  const labeled = mod.gaugeBorder(30, 50, theme, (t) => t, " ↑ 3 more ");
+  assert.equal(visibleWidth(labeled), 30);
+  assert.match(labeled, /^━{10} ↑ 3 more ─{10}$/);
+  assert.equal(visibleWidth(mod.gaugeBorder(8, 50, theme, (t) => t, " ↑ 3 more ")), 8);
+  assert.equal(mod.gaugeBorder(10, 250, theme, (t) => t), "━".repeat(10));
+});
+
+test("border hooks fall back to the editor's own until a percentage is known", () => {
+  class Editor {
+    borderColor = (t) => t;
+    renderTopBorder(width, hidden) { return `top${width}${hidden}`; }
+    renderBottomBorder(width, hidden) { return `bottom${width}${hidden}`; }
+  }
+  const editor = new Editor();
+  let used = null;
+  assert.equal(mod.drawGaugeOnBorders(editor, () => used, () => theme), true);
+  assert.equal(editor.renderTopBorder(10, 0), "top100");
+  used = 50;
+  assert.equal(editor.renderTopBorder(10, 0), "━━━━━─────");
+  assert.match(editor.renderBottomBorder(20, 2), /↓ 2 more/);
+  // Wrapping again (a new session) replaces the hooks instead of stacking them.
+  mod.drawGaugeOnBorders(editor, () => null, () => theme);
+  assert.equal(editor.renderBottomBorder(10, 1), "bottom101");
+  assert.equal(mod.drawGaugeOnBorders({}, () => 50, () => theme), false);
+});
+
+test("the context row drops its own gauge when the editor borders draw it", () => {
+  const row = mod.renderFooter({ ...fixture(), borderGauge: true }, 160, theme)[1];
+  assert.match(row, /Context 28% used/);
+  assert.doesNotMatch(row, /[━─]/);
+});
+
+test("wraps the installed editor once per session instead of replacing it", async () => {
+  const h = host();
+  class Editor {
+    borderColor = (t) => t;
+    renderTopBorder() { return "vim-top"; }
+    renderBottomBorder() { return "vim-bottom"; }
+  }
+  let built = 0;
+  h.editorFactory = () => { built++; return new Editor(); };
+  try {
+    await h.handlers.get("session_start")({}, h.ctx);
+    await h.handlers.get("session_start")({}, h.ctx);
+    const editor = h.editorFactory();
+    assert.equal(built, 1);
+    assert.ok(editor instanceof Editor);
+    assert.equal(editor.renderTopBorder(10, 0), "vim-top"); // context unknown
+    h.ctx.getContextUsage = () => ({ tokens: 100000, percent: 50, contextWindow: 200000 });
+    assert.equal(plain(editor.renderTopBorder(10, 0)), "━━━━━─────");
+  } finally { await h.handlers.get("session_shutdown")?.({}, h.ctx); }
 });

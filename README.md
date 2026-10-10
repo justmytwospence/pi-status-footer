@@ -1,8 +1,9 @@
 # pi-status-footer
 
 A [pi](https://pi.dev) extension that replaces only pi's footer using its public API.
-It leaves the editor, Vim mode, working indicator, task widgets and tool rendering
-alone. It uses pi's current theme, without background color blocks or animation.
+It leaves the working indicator, task widgets and tool rendering alone, and keeps
+whichever editor is installed (pi's, pi-vim's), redrawing only its two border lines
+as the context gauge. It uses pi's current theme, without background color blocks or animation.
 The MCP status uses a flat Nerd Font plug (U+F1E6), inheriting the status text color;
 it needs Nerd Font symbol support in the terminal. Other status text is preserved.
 
@@ -36,7 +37,13 @@ readings fresh.
    worktree, then red `✖N` unmerged paths, yellow `●` any staged, modified or
    untracked file, green `↑N` ahead and red `↓N` behind upstream. Model and
    labeled reasoning level on the right. Waiting/errors take priority.
-2. `Context 32% used` with a gauge.
+2. `Context 32% used`. The gauge itself is the editor's border lines, above and
+   below the prompt: the used share of the width in heavy rule (accent, then the
+   warning and error colors), the rest in the editor's own border color, so pi-vim's
+   mode colors still show. Scroll markers (`↑ 3 more`) stay centered on it. An
+   editor without pi's border hooks keeps its borders, and the gauge stays in the
+   footer. An extension that installs an editor without wrapping the previous one
+   (pi-vim) must load before this one; pi-stash wraps, so its order is free.
 3. Other extensions' status notices, only when present. Notices wrap rather than
    disappearing at the right edge. Existing task widgets are not duplicated.
 4. Provider/account limits explicitly labeled as percent **used**, with reset
