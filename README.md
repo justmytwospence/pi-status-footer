@@ -130,8 +130,7 @@ the same cache.
 Timers, Git subscriptions and direct child processes are cleaned up on shutdown,
 reload and session replacement. Generation checks reject late asynchronous work.
 Print, JSON and RPC modes do not start footer work. tmux window-tab state comes
-from the [tmux-agents](https://github.com/justmytwospence/tmux-agents) plugin, and herdr's `$usage` row
-token from the [herdr-attention-queue](https://github.com/justmytwospence/herdr-attention-queue) plugin, not from this footer.
+from the [tmux-agents](https://github.com/justmytwospence/tmux-agents) plugin, not from this footer.
 
 ## Development
 
